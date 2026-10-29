@@ -12,9 +12,9 @@ export default function Footer() {
       <div className="shell flex flex-col gap-3 py-6 text-[13px] text-subtle sm:flex-row sm:items-center sm:justify-between">
         <p>{LEGAL.projectName}. Photos are deleted after {LEGAL.retentionDays} days.</p>
         <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href="/privacy" className="hover:text-white">Privacy & photo terms</Link>
-          <Link href="/delete" className="hover:text-white">Delete my submission</Link>
-          <Link href="/contact" className="hover:text-white">Contact</Link>
+          <Link href="/privacy" className="hover:text-strong">Privacy & photo terms</Link>
+          <Link href="/delete" className="hover:text-strong">Delete my submission</Link>
+          <Link href="/contact" className="hover:text-strong">Contact</Link>
         </nav>
       </div>
     </footer>

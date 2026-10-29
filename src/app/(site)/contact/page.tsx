@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: `Contact · ${LEGAL.projectName}` };
 export default function ContactPage() {
   return (
     <section className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-bold tracking-tight text-white">Contact</h1>
+      <h1 className="text-3xl font-bold tracking-tight text-strong">Contact</h1>
       <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-muted">
         Questions about a submission, a privacy request or anything else: write to us and we&apos;ll get back to you.
       </p>
@@ -29,11 +29,11 @@ export default function ContactPage() {
 
         <div className="space-y-4">
           <Link href="/delete" className="pressable group block rounded-2xl border border-line bg-card p-5 hover:border-line-strong">
-            <p className="flex items-center gap-2 text-sm font-semibold text-white"><Trash2 className="size-4 text-danger-text" /> Delete my submission</p>
+            <p className="flex items-center gap-2 text-sm font-semibold text-strong"><Trash2 className="size-4 text-danger-text" /> Delete my submission</p>
             <p className="mt-1 text-[13px] leading-relaxed text-muted">Have your deletion code? Remove it yourself, instantly.</p>
           </Link>
           <Link href="/privacy" className="pressable group block rounded-2xl border border-line bg-card p-5 hover:border-line-strong">
-            <p className="flex items-center gap-2 text-sm font-semibold text-white"><ShieldCheck className="size-4 text-accent-text" /> Privacy & photo terms</p>
+            <p className="flex items-center gap-2 text-sm font-semibold text-strong"><ShieldCheck className="size-4 text-accent-text" /> Privacy & photo terms</p>
             <p className="mt-1 text-[13px] leading-relaxed text-muted">How your data and photos are used, and your rights.</p>
           </Link>
         </div>

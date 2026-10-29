@@ -10,9 +10,13 @@ export function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString("base64url");
 }
 
-/** Hash con clave para no guardar IPs en claro. */
+/**
+ * Hash con clave para no guardar IPs en claro. Usa una clave derivada (HKDF) distinta de la
+ * que firma las sesiones: cada secreto se usa para una sola cosa (separación de claves).
+ */
 export function hmac(input: string): string {
-  return createHmac("sha256", serverEnv.sessionSecret).update(input).digest("base64url");
+  const key = Buffer.from(hkdfSync("sha256", serverEnv.sessionSecret, "room-review", "ip-hash-v1", 32));
+  return createHmac("sha256", key).update(input).digest("base64url");
 }
 
 export function safeEqual(a: string, b: string): boolean {

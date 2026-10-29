@@ -12,7 +12,7 @@ export default function DeleteForm() {
       <div role="status" className="enter-rise flex items-start gap-3">
         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success-text" />
         <div>
-          <p className="text-sm font-semibold text-white">Done</p>
+          <p className="text-sm font-semibold text-strong">Done</p>
           <p className="mt-1 text-sm text-muted">
             If that code matched a submission, it has been deleted with all its photos. Nothing else to do.
           </p>

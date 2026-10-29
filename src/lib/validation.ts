@@ -21,7 +21,7 @@ export const submissionSchema = z.object({
     .array(
       z.object({
         type: z.enum(["image/jpeg", "image/png", "image/webp"]),
-        size: z.number().int().positive().max(10 * 1024 * 1024, "Each photo must be under 10 MB"),
+        size: z.number().int().positive().max(6 * 1024 * 1024, "Each photo must be under 6 MB"),
       }),
     )
     .min(1, "Please upload at least 1 photo")

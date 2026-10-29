@@ -12,7 +12,7 @@ import { LEGAL } from "@/config/legal";
 import { streamPhrase, type Platform } from "@/lib/platforms";
 
 const MAX_FILES = 5;
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 6 * 1024 * 1024;
 const MAX_DESC = 2000;
 const BUCKET = "room-media";
 
@@ -401,13 +401,13 @@ function ReviewDialog({ open, onClose, summary, peopleAllowed, where, media, con
         <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col">
           <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
             <div className="min-w-0">
-              <h3 id="review-title" className="text-lg font-semibold text-white">Review and send</h3>
+              <h3 id="review-title" className="text-lg font-semibold text-strong">Review and send</h3>
               <p className="mt-0.5 truncate text-sm text-muted">
                 @{summary.username} · {summary.country} · {media.length} {media.length === 1 ? "photo" : "photos"}
               </p>
             </div>
             <button type="button" onClick={onClose} disabled={sending} aria-label="Back to edit"
-              className="pressable -m-1 rounded-lg p-1.5 text-subtle hover:text-white disabled:opacity-40">
+              className="pressable -m-1 rounded-lg p-1.5 text-subtle hover:text-strong disabled:opacity-40">
               <X className="size-5" />
             </button>
           </header>
@@ -466,7 +466,7 @@ function ReviewDialog({ open, onClose, summary, peopleAllowed, where, media, con
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <button type="button" onClick={onClose} disabled={sending}
-                className="pressable flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-line px-5 text-sm font-semibold text-muted hover:border-line-strong hover:text-white disabled:opacity-40">
+                className="pressable flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-line px-5 text-sm font-semibold text-muted hover:border-line-strong hover:text-strong disabled:opacity-40">
                 <ArrowLeft className="size-4" /> Back to edit
               </button>
               <button type="button" onClick={onSend} disabled={!canSend || sending}

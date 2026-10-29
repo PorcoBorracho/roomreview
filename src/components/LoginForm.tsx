@@ -21,7 +21,7 @@ export default function LoginForm({ next, mode, boardTitle, streamerName, signed
       <div className="flex size-11 items-center justify-center rounded-xl bg-accent/15 text-accent-text">
         {deck ? <Tv className="size-5" /> : <Lock className="size-5" />}
       </div>
-      <h1 className="mt-4 text-xl font-bold tracking-tight text-white">{deck ? boardTitle : "Admin sign in"}</h1>
+      <h1 className="mt-4 text-xl font-bold tracking-tight text-strong">{deck ? boardTitle : "Admin sign in"}</h1>
       <p className="mt-1 text-sm leading-relaxed text-muted">
         {deck
           ? <>Enter the streamer password{streamerName ? <> for {streamerName}</> : null} to open this deck.</>

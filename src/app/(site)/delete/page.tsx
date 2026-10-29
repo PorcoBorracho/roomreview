@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: `Delete my submission · ${LEGAL.proj
 export default function DeletePage() {
   return (
     <section className="mx-auto max-w-lg">
-      <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Delete my submission</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-strong sm:text-3xl">Delete my submission</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         Enter the deletion code you received after submitting. Your details and photos are erased permanently, straight away.
       </p>

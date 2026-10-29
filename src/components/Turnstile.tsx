@@ -33,7 +33,9 @@ export default function Turnstile({ onToken, resetKey }: { onToken: (t: string) 
     }
     widgetId.current = window.turnstile.render(ref.current, {
       sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-      theme: "dark",
+      action: "submit", // debe coincidir con TURNSTILE_ACTION en el servidor
+      // Sigue el tema de la página (claro u oscuro)
+      theme: document.documentElement.getAttribute("data-theme") ?? "auto",
       callback: (t: string) => cb.current(t),
       "expired-callback": () => cb.current(""),
       "error-callback": () => cb.current(""),

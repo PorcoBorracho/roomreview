@@ -14,3 +14,9 @@ export async function rateLimit(key: string, limit: number, windowSeconds: numbe
   }
   return data === true;
 }
+
+/** Borra un contador: se usa tras un login correcto para que solo cuenten los intentos fallidos. */
+export async function resetRateLimit(key: string): Promise<void> {
+  const { error } = await supabaseAdmin().rpc("rate_limit_reset", { p_key: key });
+  if (error) console.error("rate_limit_reset error", error.message);
+}

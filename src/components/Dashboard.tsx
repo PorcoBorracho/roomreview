@@ -57,7 +57,7 @@ export default function Dashboard({ boards }: { boards: BoardWithStats[] }) {
     <section>
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Boards</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-strong sm:text-3xl">Boards</h1>
           <p className="mt-1 text-sm text-muted">
             <span className="tabular-nums">{boards.length}</span> {boards.length === 1 ? "board" : "boards"}
             <span className="mx-1.5 text-subtle">·</span>
@@ -89,7 +89,7 @@ export default function Dashboard({ boards }: { boards: BoardWithStats[] }) {
       {visible.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed border-line px-6 py-20 text-center">
           <LayoutGrid className="mx-auto size-8 text-subtle" />
-          <h2 className="mt-3 text-base font-semibold text-white">No boards yet</h2>
+          <h2 className="mt-3 text-base font-semibold text-strong">No boards yet</h2>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted">Create a board, then share its public link with your community and the deck link and password with the streamer.</p>
           <button onClick={openCreate}
             className="pressable mx-auto mt-5 flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-semibold text-on-accent hover:bg-accent-hover">
@@ -106,7 +106,7 @@ export default function Dashboard({ boards }: { boards: BoardWithStats[] }) {
               <li key={b.id} className="flex flex-col rounded-2xl border border-line bg-card shadow-raised">
                 <div className="flex-1 p-5">
                   <div className="flex items-start justify-between gap-3">
-                    <h2 className="min-w-0 text-base leading-snug font-semibold text-white">{b.title}</h2>
+                    <h2 className="min-w-0 text-base leading-snug font-semibold text-strong">{b.title}</h2>
                     {!f.isActive ? <Pill tone="muted">Inactive</Pill>
                       : f.submissionsOpen ? <Pill tone="success">Open</Pill>
                       : <Pill tone="warning">Closed</Pill>}
@@ -124,7 +124,7 @@ export default function Dashboard({ boards }: { boards: BoardWithStats[] }) {
                     </Link>
                     <IconCopy text={publicUrl} label="Copy public link" />
                     <a href={`/${b.slug}`} target="_blank" rel="noreferrer" aria-label="Open public page in new tab" title="Open in new tab"
-                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-white">
+                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-strong">
                       <ExternalLink className="size-3.5" />
                     </a>
                   </div>
@@ -159,7 +159,7 @@ export default function Dashboard({ boards }: { boards: BoardWithStats[] }) {
                     <Tv className="size-4" /> Deck
                   </Link>
                   <button onClick={() => openEdit(b)}
-                    className="pressable flex h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold text-muted hover:bg-raised hover:text-white">
+                    className="pressable flex h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold text-muted hover:bg-raised hover:text-strong">
                     <Pencil className="size-4" /> Edit
                   </button>
                 </div>
@@ -203,7 +203,7 @@ function IconCopy({ text, label }: { text: string; label: string }) {
   return (
     <button type="button" aria-label={label} title={label}
       onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} }}
-      className="pressable flex size-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-white">
+      className="pressable flex size-7 shrink-0 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-strong">
       {copied ? <Check className="size-3.5 text-success-text" /> : <Copy className="size-3.5" />}
     </button>
   );

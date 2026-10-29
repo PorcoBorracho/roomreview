@@ -147,6 +147,8 @@ Comprueba lo siguiente:
 5. Pulsa **Deck**: la entrega aprobada aparece lista para el directo.
 6. En otra ventana privada, abre <http://localhost:3000/pet-review/deck> y entra con la contraseña de streamer de ese board. Es lo que verá el streamer.
 
+**Modo claro / oscuro:** el selector de la cabecera tiene tres opciones: sistema (por defecto), claro y oscuro. Cada visitante elige el suyo y se recuerda en su navegador. En ambos temas, el fondo de las fotos del deck sigue oscuro, porque las fotos se ven mejor así y es lo que sale en directo.
+
 Atajos de teclado en el deck: **← →** cambian de foto, **↑ ↓** cambian de entrega, **+ / −** zoom, **B** difumina y **F** abre la pantalla completa.
 
 ### Gestionar boards
@@ -222,7 +224,7 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 - Bucket **privado**:
   - Solo se sube mediante URLs firmadas **de un solo uso** que genera el servidor.
   - Solo se ve mediante URLs firmadas temporales.
-  - Supabase rechaza en origen los archivos de más de 10 MB o que no sean JPEG, PNG o WebP.
+  - Supabase rechaza en origen los archivos de más de **6 MB** o que no sean JPEG, PNG o WebP. El navegador comprime cada foto por debajo de ese tamaño; si una es muy detallada, la vuelve a comprimir con menos calidad o resolución.
 - Los archivos se guardan con nombres aleatorios (UUID), nunca con el nombre original.
 
 **Validación de las subidas**
@@ -231,10 +233,10 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 - Todos los campos se validan con Zod en el servidor (longitud, caracteres permitidos, email). React escapa todo el texto que se muestra.
 
 **Anti-abuso**
-- Captcha Turnstile en cada envío.
+- Captcha Turnstile en cada envío. El servidor comprueba que el token se emitió para **tu dominio** y para la acción de envío, así que un token conseguido en otra web no sirve.
 - Límites de peticiones atómicos en Postgres:
-  - 5 envíos por hora por IP y 300 por hora en total.
-  - Login: 5 intentos cada 15 minutos por IP y 60 en total por rol.
+  - 5 envíos por hora por IP y 100 por hora en total.
+  - Login: 5 intentos fallidos cada 15 minutos por IP, 20 por board y 300 en total. Un login correcto pone a cero los contadores de su IP y su board, así que una persona que se equivoca un par de veces no se queda bloqueada.
 - Las IPs se guardan como hash HMAC, nunca en claro.
 
 **Concurrencia (no se pierden datos)**
@@ -242,7 +244,9 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 - Cada envío es una fila independiente, así que dos usuarios a la vez nunca se pisan. El sistema antiguo, en cambio, reescribía un JSON entero en cada envío.
 - Aprobar, devolver a pendiente y borrar son **operaciones condicionales**. Si dos admins actúan a la vez sobre la misma entrega, solo una acción se aplica y el otro admin recibe un aviso.
 
-**Cabeceras HTTP:** CSP estricta, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy`. Además, el panel, las colas, los decks y `/login` se sirven sin caché y con `noindex`.
+**Content-Security-Policy con nonce:** en cada petición, `src/proxy.ts` genera un valor aleatorio (nonce). El navegador solo ejecuta los scripts que lo llevan, junto con los que esos scripts carguen (`'strict-dynamic'`). Un script inyectado por un atacante no se ejecutaría. Además: `script-src-attr 'none'`, `base-uri 'none'`, `object-src 'none'` y `frame-ancestors 'none'`.
+
+**Otras cabeceras HTTP:** HSTS, `Cross-Origin-Opener-Policy` y `Cross-Origin-Resource-Policy`, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy`. Además, el panel, las colas, los decks y `/login` se sirven sin caché y con `noindex`.
 
 ---
 

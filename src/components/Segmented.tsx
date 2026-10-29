@@ -16,6 +16,8 @@ type Props = {
   /** "tabs" para filtros, "nav" para enlaces de navegación */
   kind?: "tabs" | "nav";
   className?: string;
+  /** Solo iconos (la etiqueta queda para lectores de pantalla y como tooltip) */
+  iconOnly?: boolean;
 };
 
 // useLayoutEffect en el cliente, useEffect en el servidor (evita el aviso de SSR)
@@ -25,7 +27,7 @@ const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayout
  * Selector segmentado con indicador que se desliza a la opción elegida.
  * El indicador se mueve en cuanto se pulsa (no espera a que cargue la página siguiente).
  */
-export default function Segmented({ items, active, onSelect, tone = "neutral", ariaLabel, kind = "tabs", className = "" }: Props) {
+export default function Segmented({ items, active, onSelect, tone = "neutral", ariaLabel, kind = "tabs", className = "", iconOnly = false }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const refs = useRef<Record<string, HTMLElement | null>>({});
   const [pending, setPending] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export default function Segmented({ items, active, onSelect, tone = "neutral", a
     return () => cancelAnimationFrame(id);
   }, [box, animate]);
 
-  const activeText = tone === "accent" ? "text-on-accent" : "text-white";
+  const activeText = tone === "accent" ? "text-on-accent" : "text-strong";
   const indicator = tone === "accent" ? "bg-accent shadow-raised" : "bg-raised shadow-raised";
 
   return (
@@ -65,9 +67,9 @@ export default function Segmented({ items, active, onSelect, tone = "neutral", a
         style={box ? { width: box.w, transform: `translateX(${box.x}px)` } : { opacity: 0 }} />
       {items.map(({ key, label, icon: Icon, href }) => {
         const isActive = key === current;
-        const cls = `pressable relative flex h-8 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-semibold whitespace-nowrap transition-colors duration-200 sm:flex-none ${
-          isActive ? activeText : "text-muted hover:text-white"}`;
-        const content = <>{Icon && <Icon className="size-4 shrink-0" />}{label}</>;
+        const cls = `pressable relative flex h-8 flex-1 items-center justify-center gap-2 rounded-lg ${iconOnly ? "w-8 px-0" : "px-3"} text-[13px] font-semibold whitespace-nowrap transition-colors duration-200 sm:flex-none ${
+          isActive ? activeText : "text-muted hover:text-strong"}`;
+        const content = <>{Icon && <Icon className="size-4 shrink-0" aria-hidden />}{iconOnly ? <span className="sr-only">{label}</span> : label}</>;
         const select = () => { if (key !== current) { setPending(key); onSelect?.(key); } };
         return href ? (
           <Link key={key} href={href} prefetch={false} ref={(el) => { refs.current[key] = el; }}
@@ -76,6 +78,7 @@ export default function Segmented({ items, active, onSelect, tone = "neutral", a
           </Link>
         ) : (
           <button key={key} type="button" role="tab" aria-selected={isActive} ref={(el) => { refs.current[key] = el; }}
+            title={iconOnly ? label : undefined}
             onClick={select} className={cls}>
             {content}
           </button>

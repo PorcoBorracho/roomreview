@@ -107,9 +107,9 @@ export default function BoardDialog({ board, open, onClose, onSaved, onDeleted, 
       {open && (
         <form onSubmit={save} className="flex max-h-[calc(100dvh-1.5rem)] flex-col">
           <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
-            <h3 id="board-dialog-title" className="text-lg font-semibold text-white">{board ? "Edit board" : "New board"}</h3>
+            <h3 id="board-dialog-title" className="text-lg font-semibold text-strong">{board ? "Edit board" : "New board"}</h3>
             <button type="button" onClick={onClose} disabled={saving} aria-label="Close"
-              className="pressable -m-1 rounded-lg p-1.5 text-subtle hover:text-white"><X className="size-5" /></button>
+              className="pressable -m-1 rounded-lg p-1.5 text-subtle hover:text-strong"><X className="size-5" /></button>
           </header>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
@@ -178,7 +178,7 @@ export default function BoardDialog({ board, open, onClose, onSaved, onDeleted, 
                       aria-invalid={passwordError ? true : undefined} aria-describedby="b-password-help"
                       className="field min-w-0 flex-1 font-mono" />
                     <button type="button" onClick={() => setPassword(generatePassword())} title="Generate a new password"
-                      className="pressable flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-muted hover:border-line-strong hover:text-white">
+                      className="pressable flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-muted hover:border-line-strong hover:text-strong">
                       <RefreshCw className="size-4" /> Generate
                     </button>
                   </div>
@@ -234,7 +234,7 @@ export default function BoardDialog({ board, open, onClose, onSaved, onDeleted, 
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={onClose} disabled={saving}
-                className="pressable flex h-11 shrink-0 items-center justify-center rounded-xl border border-line px-5 text-sm font-semibold text-muted hover:border-line-strong hover:text-white">
+                className="pressable flex h-11 shrink-0 items-center justify-center rounded-xl border border-line px-5 text-sm font-semibold text-muted hover:border-line-strong hover:text-strong">
                 Cancel
               </button>
               <button type="submit" disabled={saving || deleting || !!slugError || !!passwordError || !title.trim() || !streamerName.trim()}

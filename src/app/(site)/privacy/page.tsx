@@ -122,7 +122,7 @@ export default function PrivacyPage() {
           <ul className="mt-3 space-y-1 border-l border-line">
             {sections.map((s) => (
               <li key={s.id}>
-                <a href={`#${s.id}`} className="-ml-px block border-l border-transparent py-1 pl-4 text-[13px] text-muted hover:border-line-strong hover:text-white">
+                <a href={`#${s.id}`} className="-ml-px block border-l border-transparent py-1 pl-4 text-[13px] text-muted hover:border-line-strong hover:text-strong">
                   {s.title.replace(/^\d+\.\s*/, "")}
                 </a>
               </li>
@@ -132,7 +132,7 @@ export default function PrivacyPage() {
       </aside>
 
       <article className="max-w-[72ch]">
-        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Privacy & photo terms</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-strong sm:text-4xl">Privacy & photo terms</h1>
         <p className="mt-2 text-sm text-subtle">Version {L.policyVersion} · Updated {L.policyUpdated}</p>
 
         <div className="legal mt-8 space-y-9">

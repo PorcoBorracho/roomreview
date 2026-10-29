@@ -10,8 +10,10 @@
   --color-raised: oklch(0.245 0.006 285);       /* elementos elevados, hover */
   --color-line: oklch(0.290 0.006 285);         /* bordes */
   --color-line-strong: oklch(0.355 0.006 285);  /* bordes en hover */
+  --color-field-border: oklch(0.510 0.008 285); /* bordes de campos y controles: ≥3:1 (WCAG 1.4.11) */
 
   /* ── Texto (contraste AA verificado sobre card y well) ── */
+  --color-strong: oklch(0.990 0.000 0);  /* títulos y texto destacado */
   --color-ink: oklch(0.950 0.003 285);
   --color-muted: oklch(0.770 0.005 285);
   --color-subtle: oklch(0.680 0.006 285);
@@ -46,7 +48,83 @@
 
 html {
   color-scheme: dark;
+  --backdrop: rgb(0 0 0 / 0.72);
   -webkit-tap-highlight-color: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Tema claro. Compuesto aparte, no invertido: superficies casi blancas
+   con un toque del violeta de marca, acento más profundo para mantener
+   el contraste del texto blanco en botones, y sombras suaves.
+   El escenario de las fotos (stage) sigue oscuro: las fotos se juzgan
+   mejor sobre fondo oscuro y es lo que sale en el directo.
+   Contrastes verificados (AA): texto ≥4.5:1, bordes de controles ≥3:1.
+   ───────────────────────────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  --color-stage: oklch(0.160 0.006 285);
+  --color-ground: oklch(0.985 0.003 285);
+  --color-panel: oklch(0.975 0.004 285);
+  --color-well: oklch(0.970 0.004 285);
+  --color-card: oklch(1.000 0.000 0);
+  --color-raised: oklch(0.945 0.006 285);
+  --color-line: oklch(0.900 0.008 285);
+  --color-line-strong: oklch(0.830 0.010 285);
+  --color-ink: oklch(0.220 0.012 285);
+  --color-strong: oklch(0.160 0.012 285);
+  --color-muted: oklch(0.440 0.012 285);
+  --color-subtle: oklch(0.510 0.012 285);
+  --color-hint: oklch(0.530 0.012 285);
+  --color-accent: oklch(0.530 0.220 293);
+  --color-accent-hover: oklch(0.480 0.220 293);
+  --color-accent-text: oklch(0.500 0.210 293);
+  --color-on-accent: oklch(0.995 0.000 0);
+  --color-highlight: oklch(0.530 0.220 293);
+  --color-success: oklch(0.500 0.130 155);
+  --color-success-hover: oklch(0.450 0.130 155);
+  --color-success-text: oklch(0.450 0.120 155);
+  --color-danger: oklch(0.550 0.210 27);
+  --color-danger-text: oklch(0.500 0.190 27);
+  --color-warning: oklch(0.780 0.150 75);
+  --color-warning-text: oklch(0.480 0.110 60);
+  --color-field-border: oklch(0.640 0.010 285);
+  --shadow-raised: 0 1px 2px rgb(20 20 40 / 0.06), 0 6px 20px -8px rgb(20 20 40 / 0.14);
+  --shadow-float: 0 2px 6px rgb(20 20 40 / 0.08), 0 24px 48px -16px rgb(20 20 40 / 0.28);
+  --backdrop: rgb(20 20 30 / 0.45);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-stage: oklch(0.160 0.006 285);
+    --color-ground: oklch(0.985 0.003 285);
+    --color-panel: oklch(0.975 0.004 285);
+    --color-well: oklch(0.970 0.004 285);
+    --color-card: oklch(1.000 0.000 0);
+    --color-raised: oklch(0.945 0.006 285);
+    --color-line: oklch(0.900 0.008 285);
+    --color-line-strong: oklch(0.830 0.010 285);
+    --color-ink: oklch(0.220 0.012 285);
+    --color-strong: oklch(0.160 0.012 285);
+    --color-muted: oklch(0.440 0.012 285);
+    --color-subtle: oklch(0.510 0.012 285);
+    --color-hint: oklch(0.530 0.012 285);
+    --color-accent: oklch(0.530 0.220 293);
+    --color-accent-hover: oklch(0.480 0.220 293);
+    --color-accent-text: oklch(0.500 0.210 293);
+    --color-on-accent: oklch(0.995 0.000 0);
+    --color-highlight: oklch(0.530 0.220 293);
+    --color-success: oklch(0.500 0.130 155);
+    --color-success-hover: oklch(0.450 0.130 155);
+    --color-success-text: oklch(0.450 0.120 155);
+    --color-danger: oklch(0.550 0.210 27);
+    --color-danger-text: oklch(0.500 0.190 27);
+    --color-warning: oklch(0.780 0.150 75);
+    --color-warning-text: oklch(0.480 0.110 60);
+    --color-field-border: oklch(0.640 0.010 285);
+    --shadow-raised: 0 1px 2px rgb(20 20 40 / 0.06), 0 6px 20px -8px rgb(20 20 40 / 0.14);
+    --shadow-float: 0 2px 6px rgb(20 20 40 / 0.08), 0 24px 48px -16px rgb(20 20 40 / 0.28);
+    --backdrop: rgb(20 20 30 / 0.45);
+    color-scheme: light;
+  }
 }
 
 body {
@@ -91,7 +169,7 @@ p { text-wrap: pretty; }
   .field {
     width: 100%;
     background: var(--color-well);
-    border: 1px solid var(--color-line);
+    border: 1px solid var(--color-field-border);
     border-radius: 0.75rem;
     color: var(--color-ink);
     /* 16 px en móvil para que iOS no haga zoom al enfocar */
@@ -103,7 +181,7 @@ p { text-wrap: pretty; }
   @media (min-width: 640px) {
     .field { font-size: 0.875rem; line-height: 1.25rem; }
   }
-  .field:hover { border-color: var(--color-line-strong); }
+  .field:hover { border-color: color-mix(in oklab, var(--color-field-border) 70%, var(--color-strong)); }
   .field:focus {
     outline: none;
     border-color: var(--color-accent);
@@ -154,7 +232,7 @@ p { text-wrap: pretty; }
 }
 
 /* Texto legal legible: medida ~70ch, jerarquía clara */
-.legal h2 { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; color: #fff; margin-bottom: 0.75rem; }
+.legal h2 { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; color: var(--color-strong); margin-bottom: 0.75rem; }
 .legal p, .legal li { font-size: 15px; line-height: 1.7; color: var(--color-muted); }
 .legal p + p, .legal p + ul, .legal ul + p { margin-top: 0.75rem; }
 .legal ul { list-style: disc; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
@@ -162,7 +240,7 @@ p { text-wrap: pretty; }
 .legal li::marker { color: var(--color-subtle); }
 .legal strong { color: var(--color-ink); font-weight: 600; }
 .legal a { color: var(--color-accent-text); text-decoration: underline; text-underline-offset: 4px; }
-.legal a:hover { color: #fff; }
+.legal a:hover { color: var(--color-strong); }
 
 /* Difuminado de privacidad en directo: inmediato, sin transición */
 .privacy-blur .zoom-img { filter: blur(32px) saturate(0.6); }
@@ -174,7 +252,7 @@ p { text-wrap: pretty; }
   @starting-style { opacity: 0; transform: translateY(10px) scale(0.98); }
 }
 .review-dialog::backdrop {
-  background: rgb(0 0 0 / 0.72);
+  background: var(--backdrop);
   backdrop-filter: blur(3px);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -188,7 +266,7 @@ p { text-wrap: pretty; }
 
 /* Interruptor: el círculo se desliza y se estira un poco al pulsar */
 .switch {
-  border-color: var(--color-line-strong);
+  border-color: var(--color-field-border);
   background: var(--color-raised);
   transition: background-color 200ms ease, border-color 200ms ease;
 }
@@ -227,4 +305,10 @@ p { text-wrap: pretty; }
   background: color-mix(in oklab, var(--color-ground) 82%, transparent);
   border-bottom-color: var(--color-line);
   backdrop-filter: blur(12px);
+}
+
+/* Cambio de tema: un fundido corto de toda la página (View Transitions) */
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: var(--ease-out);
 }

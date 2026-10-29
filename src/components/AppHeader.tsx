@@ -7,6 +7,7 @@ import type { BoardInfo } from "@/lib/types";
 import HeaderShell from "./HeaderShell";
 import BoardNav from "./BoardNav";
 import { Pill } from "./Pill";
+import ThemeToggle from "./ThemeToggle";
 
 type Props = { session: Session | null; board?: BoardInfo; staff?: boolean };
 
@@ -28,14 +29,14 @@ export default function AppHeader({ session, board, staff = false }: Props) {
           ) : mark}
           <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
             {admin ? (
-              <Link href="/" className="shrink-0 font-semibold text-muted hover:text-white">{board ? "Boards" : LEGAL.projectName}</Link>
+              <Link href="/" className="shrink-0 font-semibold text-muted hover:text-strong">{board ? "Boards" : LEGAL.projectName}</Link>
             ) : (
               <span className="shrink-0 font-semibold text-muted">{board?.streamerName || LEGAL.projectName}</span>
             )}
             {board && staff && (
               <>
                 <ChevronRight aria-hidden className="size-4 shrink-0 text-subtle" />
-                <span className="truncate font-semibold text-white">{board.title}</span>
+                <span className="truncate font-semibold text-strong">{board.title}</span>
                 {!board.isActive && <Pill tone="muted">Inactive</Pill>}
                 {board.isActive && !board.submissionsOpen && <Pill tone="warning">Closed</Pill>}
               </>
@@ -43,7 +44,7 @@ export default function AppHeader({ session, board, staff = false }: Props) {
             {!board && admin && (
               <>
                 <ChevronRight aria-hidden className="size-4 shrink-0 text-subtle" />
-                <span className="truncate font-semibold text-white">Control panel</span>
+                <span className="truncate font-semibold text-strong">Control panel</span>
               </>
             )}
           </nav>
@@ -55,19 +56,22 @@ export default function AppHeader({ session, board, staff = false }: Props) {
           </div>
         )}
 
+        <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
         {session && (
-          <div className="flex shrink-0 items-center gap-2">
+          <>
             <span className="hidden rounded-lg bg-raised px-2.5 py-1 text-xs font-semibold text-muted md:inline">
               {admin ? "Admin" : "Streamer"}
             </span>
             <form action={logout}>
               <button type="submit" aria-label="Log out" title="Log out"
-                className="pressable flex h-9 items-center gap-2 rounded-xl px-3 text-[13px] font-semibold text-muted hover:bg-raised hover:text-white">
+                className="pressable flex h-9 items-center gap-2 rounded-xl px-3 text-[13px] font-semibold text-muted hover:bg-raised hover:text-strong">
                 <LogOut className="size-4" /> <span className="hidden sm:inline">Log out</span>
               </button>
             </form>
-          </div>
+          </>
         )}
+        </div>
       </div>
     </HeaderShell>
   );

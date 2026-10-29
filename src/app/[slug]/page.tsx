@@ -36,7 +36,7 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
   return (
     <div className="mx-auto grid max-w-[1320px] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,42rem)] lg:gap-16 xl:gap-24">
       <section className="lg:sticky lg:top-24 lg:self-start lg:pt-4">
-        <h1 className="text-4xl leading-[1.05] font-extrabold tracking-tight text-white sm:text-5xl xl:text-6xl">{board.title}</h1>
+        <h1 className="text-4xl leading-[1.05] font-extrabold tracking-tight text-strong sm:text-5xl xl:text-6xl">{board.title}</h1>
         {board.streamerName && (
           <p className="mt-4 text-[15px] text-muted">
             Hosted by <span className="font-semibold text-ink">{board.streamerName}</span>
@@ -62,9 +62,9 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
         )}
 
         <p className="mt-10 hidden text-[13px] text-subtle lg:block">
-          <Link href="/privacy" className="hover:text-white">Privacy & photo terms</Link>
+          <Link href="/privacy" className="hover:text-strong">Privacy & photo terms</Link>
           <span className="mx-2">·</span>
-          <Link href="/delete" className="hover:text-white">Delete a submission</Link>
+          <Link href="/delete" className="hover:text-strong">Delete a submission</Link>
         </p>
       </section>
 
@@ -76,7 +76,7 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
             <span className="mx-auto flex size-11 items-center justify-center rounded-xl bg-raised text-muted">
               <Lock className="size-5" />
             </span>
-            <h2 className="mt-4 text-lg font-semibold text-white">Submissions are closed</h2>
+            <h2 className="mt-4 text-lg font-semibold text-strong">Submissions are closed</h2>
             <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
               This board isn&apos;t accepting new submissions right now. Check back later.
             </p>

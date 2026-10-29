@@ -61,25 +61,25 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
     <section>
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Deck</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-strong sm:text-3xl">Deck</h1>
           <p className="mt-1 text-sm text-muted">Approved submissions, oldest first.</p>
         </div>
 
         <div className="flex items-center gap-2">
           <button onClick={() => { setRefreshing(true); router.refresh(); }} aria-label="Reload approved submissions" title="Reload"
-            className="pressable flex size-10 items-center justify-center rounded-xl border border-line text-muted hover:border-line-strong hover:text-white">
+            className="pressable flex size-10 items-center justify-center rounded-xl border border-line text-muted hover:border-line-strong hover:text-strong">
             <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
           <div className="flex h-10 items-center rounded-xl border border-line bg-well p-1">
             <button onClick={() => changeSub(-1)} disabled={n < 2} aria-label="Previous submission"
-              className="pressable flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-muted hover:bg-raised hover:text-white disabled:opacity-40">
+              className="pressable flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-muted hover:bg-raised hover:text-strong disabled:opacity-40">
               <ChevronLeft className="size-4" /><span className="hidden sm:inline">Prev</span>
             </button>
-            <span className="min-w-[4.5rem] px-2 text-center text-[13px] font-semibold tabular-nums text-white" aria-live="polite">
+            <span className="min-w-[4.5rem] px-2 text-center text-[13px] font-semibold tabular-nums text-strong" aria-live="polite">
               {n ? s + 1 : 0} <span className="font-normal text-subtle">of</span> {n}
             </span>
             <button onClick={() => changeSub(1)} disabled={n < 2} aria-label="Next submission"
-              className="pressable flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-muted hover:bg-raised hover:text-white disabled:opacity-40">
+              className="pressable flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-muted hover:bg-raised hover:text-strong disabled:opacity-40">
               <span className="hidden sm:inline">Next</span><ChevronRight className="size-4" />
             </button>
           </div>
@@ -94,13 +94,13 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
       {!sub || !media ? (
         <div className="mt-6 rounded-3xl border border-dashed border-line px-6 py-24 text-center">
           <Tv2 className="mx-auto size-9 text-subtle" />
-          <h3 className="mt-3 text-base font-semibold text-white">No approved submissions yet</h3>
+          <h3 className="mt-3 text-base font-semibold text-strong">No approved submissions yet</h3>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted">Submissions appear here once a moderator approves them. Use reload to check for new ones.</p>
         </div>
       ) : (
         <div className="mt-6 flex flex-col overflow-hidden rounded-3xl border border-line bg-black shadow-float lg:h-[calc(100dvh-15rem)] lg:min-h-[560px] lg:flex-row">
           <div className={`relative flex min-h-[55vh] flex-1 items-center justify-center bg-stage p-3 sm:p-5 lg:min-h-0 ${blurred ? "privacy-blur" : ""}`}>
-            <span className="pointer-events-none absolute top-4 left-4 z-10 rounded-lg bg-black/70 px-2.5 py-1 text-xs font-semibold tabular-nums text-highlight backdrop-blur-md">
+            <span className="pointer-events-none absolute top-4 left-4 z-10 rounded-lg bg-black/70 px-2.5 py-1 text-xs font-semibold tabular-nums text-white backdrop-blur-md">
               Photo {mi + 1} / {m}
             </span>
 
@@ -141,7 +141,7 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
           <aside className="flex w-full flex-col border-t border-line bg-panel lg:w-[380px] lg:border-t-0 lg:border-l 2xl:w-[440px]">
             <div className="border-b border-line p-6">
               <p className="text-sm tabular-nums text-subtle">#{s + 1}</p>
-              <h2 className="mt-1 text-xl font-bold tracking-tight [overflow-wrap:anywhere] text-white 2xl:text-2xl">@{sub.username}</h2>
+              <h2 className="mt-1 text-xl font-bold tracking-tight [overflow-wrap:anywhere] text-strong 2xl:text-2xl">@{sub.username}</h2>
               <p className="mt-2 flex items-center gap-1.5 text-sm text-muted">
                 <MapPin className="size-4 text-accent-text" /> {sub.country}
               </p>

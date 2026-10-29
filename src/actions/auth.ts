@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { verifyPassword } from "@/lib/crypto";
 import { serverEnv } from "@/lib/env";
-import { rateLimit } from "@/lib/ratelimit";
+import { rateLimit, resetRateLimit } from "@/lib/ratelimit";
 import { clientKey } from "@/lib/request";
 import { createSession, destroySession, getSession } from "@/lib/session";
 import { getBoardBySlug, getBoardPasswordHash } from "@/lib/boards";
@@ -38,11 +38,14 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const next = m ? parsed.data.next! : "";
   const board = m && m[2] === "deck" ? await getBoardBySlug(m[1]) : null;
 
-  // Anti fuerza bruta: por IP, por board y global
+  // Anti fuerza bruta: por IP, por board y global. Un login correcto pone a cero los contadores
+  // de su IP y su board, así que en la práctica solo cuentan los fallos.
+  const ipKey = await clientKey("login");
+  const boardKey = board ? `login:board:${board.id}` : null;
   const checks = await Promise.all([
-    rateLimit(await clientKey("login"), 5, 15 * 60),
-    rateLimit("login:global", 100, 15 * 60),
-    board ? rateLimit(`login:board:${board.id}`, 20, 15 * 60) : Promise.resolve(true),
+    rateLimit(ipKey, 5, 15 * 60),
+    rateLimit("login:global", 300, 15 * 60),
+    boardKey ? rateLimit(boardKey, 20, 15 * 60) : Promise.resolve(true),
   ]);
   if (checks.includes(false)) return { error: "Too many attempts. Please wait 15 minutes." };
 
@@ -52,6 +55,10 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     verifyPassword(password, serverEnv.adminPasswordHash),
     board ? verifyPassword(password, boardHash ?? DUMMY_HASH) : Promise.resolve(false),
   ]);
+
+  if (isAdmin || (isStreamer && board && boardHash)) {
+    await Promise.all([resetRateLimit(ipKey), boardKey ? resetRateLimit(boardKey) : Promise.resolve()]);
+  }
 
   if (isAdmin) {
     await createSession({ role: "admin" });

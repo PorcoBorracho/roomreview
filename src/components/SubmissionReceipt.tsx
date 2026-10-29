@@ -31,7 +31,7 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
       <div className="flex items-start gap-3">
         <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-success-text" />
         <div>
-          <h3 className="text-lg font-semibold text-white">Submission received</h3>
+          <h3 className="text-lg font-semibold text-strong">Submission received</h3>
           <p className="mt-1 text-sm text-muted">
             A moderator will review it. Nothing is shown on stream until it&apos;s approved.
           </p>
@@ -47,7 +47,7 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
           can&apos;t be shown again.
         </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <code className="flex-1 rounded-lg border border-line bg-well px-3 py-2.5 text-center font-mono text-[15px] font-semibold tracking-wide text-white select-all">
+          <code className="flex-1 rounded-lg border border-line bg-well px-3 py-2.5 text-center font-mono text-[15px] font-semibold tracking-wide text-strong select-all">
             {code}
           </code>
           <div className="flex gap-2">
@@ -71,7 +71,7 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
       </div>
 
       <button type="button" onClick={onDone}
-        className="pressable flex h-11 w-full items-center justify-center rounded-xl border border-line text-sm font-semibold text-muted hover:border-line-strong hover:text-white">
+        className="pressable flex h-11 w-full items-center justify-center rounded-xl border border-line text-sm font-semibold text-muted hover:border-line-strong hover:text-strong">
         I&apos;ve saved my code, submit another
       </button>
     </div>

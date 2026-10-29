@@ -227,12 +227,21 @@ begin
   return v_count <= p_limit;
 end $$;
 
+-- Pone a cero un contador (p. ej. tras un login correcto, para que solo cuenten los fallos)
+create or replace function public.rate_limit_reset(p_key text) returns void
+language sql
+security invoker
+set search_path = public
+as $$ delete from rate_limits where key = p_key $$;
+
 revoke all on function public.create_submission(uuid, uuid, text, text, text, text, text, jsonb, text, text) from public, anon, authenticated;
 revoke all on function public.board_stats() from public, anon, authenticated;
 revoke all on function public.rate_limit_hit(text, int, int) from public, anon, authenticated;
+revoke all on function public.rate_limit_reset(text) from public, anon, authenticated;
 grant execute on function public.create_submission(uuid, uuid, text, text, text, text, text, jsonb, text, text) to service_role;
 grant execute on function public.board_stats() to service_role;
 grant execute on function public.rate_limit_hit(text, int, int) to service_role;
+grant execute on function public.rate_limit_reset(text) to service_role;
 
 -- ---------------------------------------------------------------------
 -- Almacenamiento: bucket PRIVADO con límites de tamaño y tipo
@@ -242,7 +251,7 @@ grant execute on function public.rate_limit_hit(text, int, int) to service_role;
 -- que genera el servidor, y solo se ve con URLs firmadas temporales.
 -- ---------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('room-media', 'room-media', false, 10485760, array['image/jpeg', 'image/png', 'image/webp'])
+values ('room-media', 'room-media', false, 6291456, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set
   public             = false,
   file_size_limit    = excluded.file_size_limit,

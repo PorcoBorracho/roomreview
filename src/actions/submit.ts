@@ -30,7 +30,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
   if (!(await rateLimit(await clientKey("submit"), 5, 3600))) {
     return { ok: false, error: "Too many submissions from your connection. Please try again later." };
   }
-  if (!(await rateLimit("submit:global", 300, 3600))) {
+  if (!(await rateLimit("submit:global", 100, 3600))) {
     return { ok: false, error: "The service is busy. Please try again in a few minutes." };
   }
   if (!(await verifyTurnstile(data.turnstileToken, await clientIp()))) {

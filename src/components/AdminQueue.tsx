@@ -78,7 +78,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
     <section>
       <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Queue</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-strong sm:text-3xl">Queue</h1>
           <p className="mt-1 text-sm text-muted">
             <span className="tabular-nums">{filtered}</span> {status === "all" ? "shown" : status}
             <span className="mx-1.5 text-subtle">·</span>
@@ -100,7 +100,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
               className="field h-10 py-0 pr-9 pl-10 [&::-webkit-search-cancel-button]:hidden" />
             {search && (
               <button onClick={() => setSearch("")} aria-label="Clear search"
-                className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-subtle hover:text-white">
+                className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-subtle hover:text-strong">
                 <X className="size-3.5" />
               </button>
             )}
@@ -118,7 +118,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
           </p>
         </div>
         <button onClick={() => setShowEmails((v) => !v)}
-          className="pressable flex h-8 shrink-0 items-center gap-1.5 self-start rounded-lg border border-line px-2.5 text-xs font-semibold text-muted hover:text-white">
+          className="pressable flex h-8 shrink-0 items-center gap-1.5 self-start rounded-lg border border-line px-2.5 text-xs font-semibold text-muted hover:text-strong">
           {showEmails ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />} {showEmails ? "Hide emails" : "Show emails"}
         </button>
       </div>
@@ -132,7 +132,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
       {submissions.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-dashed border-line px-6 py-16 text-center">
           <Inbox className="mx-auto size-8 text-subtle" />
-          <h3 className="mt-3 text-base font-semibold text-white">
+          <h3 className="mt-3 text-base font-semibold text-strong">
             {q ? "No matches" : status === "pending" ? "You're all caught up" : "Nothing here yet"}
           </h3>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
@@ -155,7 +155,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                       <span className="text-sm tabular-nums text-subtle">#{offset + index + 1}</span>
-                      <h2 className="max-w-full truncate text-base font-semibold text-white">@{sub.username}</h2>
+                      <h2 className="max-w-full truncate text-base font-semibold text-strong">@{sub.username}</h2>
                       <span className="text-sm text-muted">{sub.country}</span>
                       {status === "all" && (
                         <span className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${
@@ -179,7 +179,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
                   <div className="flex shrink-0 items-center gap-2">
                     {approved ? (
                       <button disabled={isBusy} onClick={() => run(sub.id, "undo", unapproveSubmission, status === "approved")}
-                        className="pressable flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-muted hover:border-line-strong hover:text-white">
+                        className="pressable flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-muted hover:border-line-strong hover:text-strong">
                         {isBusy && busy?.action === "undo" ? <Loader2 className="size-4 animate-spin" /> : <Undo2 className="size-4" />}
                         Move to pending
                       </button>
@@ -229,12 +229,12 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
       {pages > 1 && (
         <nav aria-label="Pagination" className="mt-6 flex items-center justify-center gap-3 text-sm text-muted">
           <button disabled={page <= 1} onClick={() => go({ page: page - 1 })} aria-label="Previous page"
-            className="pressable flex size-9 items-center justify-center rounded-xl border border-line hover:text-white disabled:opacity-40">
+            className="pressable flex size-9 items-center justify-center rounded-xl border border-line hover:text-strong disabled:opacity-40">
             <ChevronLeft className="size-4" />
           </button>
           <span className="tabular-nums">Page {page} of {pages}</span>
           <button disabled={page >= pages} onClick={() => go({ page: page + 1 })} aria-label="Next page"
-            className="pressable flex size-9 items-center justify-center rounded-xl border border-line hover:text-white disabled:opacity-40">
+            className="pressable flex size-9 items-center justify-center rounded-xl border border-line hover:text-strong disabled:opacity-40">
             <ChevronRight className="size-4" />
           </button>
         </nav>

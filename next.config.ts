@@ -1,32 +1,16 @@
 import type { NextConfig } from "next";
 
-const isDev = process.env.NODE_ENV !== "production";
-const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://challenges.cloudflare.com`,
-  "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' blob: data: ${supabase}`,
-  "font-src 'self'",
-  `connect-src 'self' ${supabase} https://challenges.cloudflare.com`,
-  "frame-src https://challenges.cloudflare.com",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  ...(isDev ? [] : ["upgrade-insecure-requests"]),
-].join("; ");
-
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
+  // La Content-Security-Policy (con nonce por petición) la pone src/proxy.ts
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "no-referrer" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+  { key: "Origin-Agent-Cluster", value: "?1" },
 ];
 
 const nextConfig: NextConfig = {

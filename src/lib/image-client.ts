@@ -1,7 +1,8 @@
 "use client";
 
-const MAX_DIMENSION = 2560;
-const QUALITY = 0.88;
+// Debe ser menor que el límite del servidor y del bucket (6 MB)
+const TARGET_BYTES = 5.5 * 1024 * 1024;
+const ATTEMPTS: [number, number][] = [[2560, 0.88], [2560, 0.8], [2048, 0.8], [1600, 0.75]];
 export const CLIENT_MAX_INPUT_BYTES = 40 * 1024 * 1024;
 
 /**
@@ -21,7 +22,20 @@ export async function processImage(file: File): Promise<Blob> {
     throw new Error(`"${file.name}" can't be read. Use JPEG, PNG or WebP.`);
   }
 
-  const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+  try {
+    // Si una foto muy detallada supera el límite, se prueba con menos calidad o menos resolución
+    for (const [maxDim, quality] of ATTEMPTS) {
+      const blob = await encode(bitmap, maxDim, quality);
+      if (blob.size <= TARGET_BYTES) return blob;
+    }
+  } finally {
+    bitmap.close();
+  }
+  throw new Error(`"${file.name}" is too detailed to compress under 6 MB. Try a smaller photo.`);
+}
+
+async function encode(bitmap: ImageBitmap, maxDim: number, quality: number): Promise<Blob> {
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
 
@@ -33,9 +47,8 @@ export async function processImage(file: File): Promise<Blob> {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
 
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", QUALITY));
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", quality));
   if (!blob) throw new Error("Could not process the image");
   return blob;
 }
