@@ -8,10 +8,12 @@ import { clientIp, clientKey } from "@/lib/request";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { randomToken, sha256, safeEqual } from "@/lib/crypto";
 import { BUCKET, MAX_FILE_BYTES } from "@/lib/env";
+import { LEGAL } from "@/config/legal";
+import { newDeletionCode } from "@/lib/deletion-code";
 import { removeObjects, sniffImageType } from "@/lib/media";
 
 type InitResult =
-  | { ok: true; submissionId: string; finalizeToken: string; uploads: { path: string; token: string }[] }
+  | { ok: true; submissionId: string; finalizeToken: string; deletionCode: string; uploads: { path: string; token: string }[] }
   | { ok: false; error: string };
 
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
@@ -38,6 +40,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
   const db = supabaseAdmin();
   const id = randomUUID();
   const finalizeToken = randomToken();
+  const deletion = newDeletionCode();
   // Nombres de archivo aleatorios: nunca se usa el nombre original del usuario
   const media = data.files.map((f, i) => ({
     path: `${id}/${randomUUID()}.${EXT[f.type]}`,
@@ -53,6 +56,8 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
     p_description: data.description,
     p_token_hash: sha256(finalizeToken),
     p_media: media,
+    p_consent_version: LEGAL.policyVersion,
+    p_deletion_hash: deletion.hash,
   });
   if (error) {
     console.error("create_submission", error.message);
@@ -70,7 +75,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
     uploads.push({ path: signed.path, token: signed.token });
   }
 
-  return { ok: true, submissionId: id, finalizeToken, uploads };
+  return { ok: true, submissionId: id, finalizeToken, deletionCode: deletion.code, uploads };
 }
 
 type FinalizeResult = { ok: true } | { ok: false; error: string };

@@ -13,7 +13,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (session && hasAccess(session.role, role)) redirect(role === "admin" ? "/admin" : "/streamer");
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center p-4">
+    <div className="flex min-h-[60vh] items-center justify-center">
       <LoginForm role={role} next={next} />
     </div>
   );

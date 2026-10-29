@@ -1,59 +1,72 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mail, Clapperboard, X, Send, CheckCircle2, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { Mail, ImagePlus, X, Send, AlertCircle, ShieldAlert, Loader2, ArrowRight, ArrowLeft, Info } from "lucide-react";
 import { initSubmission, finalizeSubmission } from "@/actions/submit";
 import { processImage } from "@/lib/image-client";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import Turnstile from "./Turnstile";
+import SubmissionReceipt from "./SubmissionReceipt";
+import { LEGAL } from "@/config/legal";
 
 const MAX_FILES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_DESC = 2000;
 const BUCKET = "room-media";
 
 type Picked = { id: string; blob: Blob; preview: string };
-
-const inputCls =
-  "w-full bg-[#0e0e13] border border-twitch-border rounded-xl py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-twitch-purple transition";
+type Progress = { label: string; done: number; total: number };
+type Consents = { age: boolean; thirdParties: boolean; broadcast: boolean; privacy: boolean };
+const NO_CONSENTS: Consents = { age: false, thirdParties: false, broadcast: false, privacy: false };
 
 export default function SubmitForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [media, setMedia] = useState<Picked[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(0);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [receipt, setReceipt] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [captchaKey, setCaptchaKey] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [descLen, setDescLen] = useState(0);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [summary, setSummary] = useState({ username: "", country: "" });
+  const [consents, setConsents] = useState<Consents>(NO_CONSENTS);
+  const allConsents = Object.values(consents).every(Boolean);
+
+  const submitting = progress !== null;
+  const slotsLeft = MAX_FILES - media.length - processing;
+  const full = slotsLeft <= 0;
 
   const mediaRef = useRef(media);
   mediaRef.current = media;
   useEffect(() => () => mediaRef.current.forEach((m) => URL.revokeObjectURL(m.preview)), []);
 
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(false), 6000);
-    return () => clearTimeout(t);
-  }, [success]);
 
   async function addFiles(list: FileList | File[]) {
     setError(null);
-    const files = Array.from(list).slice(0, MAX_FILES - media.length);
+    const all = Array.from(list);
+    const files = all.slice(0, Math.max(0, slotsLeft));
+    if (all.length > files.length) setError(`You can add up to ${MAX_FILES} photos. Extra files were skipped.`);
     if (files.length === 0) return;
-    const added: Picked[] = [];
-    for (let i = 0; i < files.length; i++) {
-      setBusy(`Processing photo ${i + 1} of ${files.length}...`);
+
+    setProcessing((n) => n + files.length);
+    for (const file of files) {
       try {
-        const blob = await processImage(files[i]);
-        if (blob.size > MAX_BYTES) throw new Error(`"${files[i].name}" is too large after compression`);
-        added.push({ id: crypto.randomUUID(), blob, preview: URL.createObjectURL(blob) });
+        const blob = await processImage(file);
+        if (blob.size > MAX_BYTES) throw new Error(`"${file.name}" is too large, even after compression.`);
+        const item = { id: crypto.randomUUID(), blob, preview: URL.createObjectURL(blob) };
+        setMedia((m) => [...m, item].slice(0, MAX_FILES));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not process image");
+        setError(e instanceof Error ? e.message : "That image couldn't be read.");
+      } finally {
+        setProcessing((n) => n - 1);
       }
     }
-    setBusy(null);
-    setMedia((m) => [...m, ...added].slice(0, MAX_FILES));
   }
 
   function removeMedia(id: string) {
@@ -64,15 +77,30 @@ export default function SubmitForm() {
     });
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  /** Paso 1: el botón principal solo valida y abre la revisión. Aún no se envía nada. */
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (media.length === 0) return setError("Please upload at least 1 photo of your room!");
-    if (!token) return setError("Please complete the anti-bot check.");
-
+    if (processing > 0) return setError("Wait for your photos to finish processing.");
+    if (media.length === 0) return setError("Add at least one photo of your room.");
     const fd = new FormData(e.currentTarget);
+    setSummary({ username: String(fd.get("username") ?? "").replace(/^@+/, ""), country: String(fd.get("country") ?? "") });
+    setReviewError(null);
+    setReviewOpen(true);
+  }
+
+  /** Paso 2: tras leer los avisos y aceptar, se envían los datos. */
+  async function send() {
+    const form = formRef.current;
+    if (!form) return;
+    setReviewError(null);
+    if (!allConsents) return setReviewError("Tick all four boxes to continue.");
+    if (!token) return setReviewError("Complete the verification check first.");
+
+    const fd = new FormData(form);
     try {
-      setBusy("Preparing submission...");
+      const total = media.length + 2;
+      setProgress({ label: "Preparing…", done: 0, total });
       const init = await initSubmission({
         username: String(fd.get("username") ?? ""),
         email: String(fd.get("email") ?? ""),
@@ -80,157 +108,403 @@ export default function SubmitForm() {
         description: String(fd.get("description") ?? ""),
         files: media.map((m) => ({ type: "image/jpeg", size: m.blob.size })),
         turnstileToken: token,
+        consents,
       });
       if (!init.ok) throw new Error(init.error);
 
       const storage = supabaseBrowser().storage.from(BUCKET);
       for (let i = 0; i < init.uploads.length; i++) {
-        setBusy(`Uploading photo ${i + 1} of ${init.uploads.length}...`);
+        setProgress({ label: `Uploading photo ${i + 1} of ${init.uploads.length}…`, done: i + 1, total });
         const u = init.uploads[i];
         const { error: upErr } = await storage.uploadToSignedUrl(u.path, u.token, media[i].blob, {
           contentType: "image/jpeg",
           upsert: false,
         });
-        if (upErr) throw new Error("Upload failed. Check your connection and try again.");
+        if (upErr) throw new Error("A photo failed to upload. Check your connection and try again.");
       }
 
-      setBusy("Saving submission...");
+      setProgress({ label: "Saving…", done: total - 1, total });
       const fin = await finalizeSubmission(init.submissionId, init.finalizeToken);
       if (!fin.ok) throw new Error(fin.error);
 
-      formRef.current?.reset();
+      form.reset();
+      setDescLen(0);
       media.forEach((m) => URL.revokeObjectURL(m.preview));
       setMedia([]);
-      setSuccess(true);
+      setConsents(NO_CONSENTS);
+      setReviewOpen(false);
+      setReceipt(init.deletionCode);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setReviewError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
-      setBusy(null);
+      setProgress(null);
       setToken("");
       setCaptchaKey((k) => k + 1); // los tokens de Turnstile son de un solo uso
     }
   }
 
+  if (receipt) return <SubmissionReceipt code={receipt} onDone={() => setReceipt(null)} />;
+
   return (
-    <>
-      {success && (
-        <div role="status" className="fixed bottom-6 right-6 z-50 bg-twitch-card border-2 border-emerald-500 text-white p-4 rounded-2xl shadow-2xl flex items-center space-x-3 max-w-md">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-emerald-400">Submission Received!</h4>
-            <p className="text-xs text-slate-300">Your room details and media have been privately submitted for review.</p>
-          </div>
-          <button onClick={() => setSuccess(false)} className="text-slate-400 hover:text-white" aria-label="Close">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {busy && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-3">
-          <div className="w-12 h-12 border-4 border-twitch-purple border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-mono text-twitch-neon font-bold">{busy}</p>
-        </div>
-      )}
-
-      <form ref={formRef} onSubmit={onSubmit} className="space-y-5" noValidate={false}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="username" className="block text-xs font-semibold text-slate-300 mb-1.5">Username *</label>
+    <form ref={formRef} onSubmit={onSubmit}>
+      <fieldset disabled={submitting} className="space-y-6 disabled:opacity-100">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <Field label="Username" htmlFor="username">
             <div className="relative">
-              <span className="absolute left-3.5 top-2.5 text-slate-500 font-mono text-xs">@</span>
+              <span aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-hint">@</span>
               <input id="username" name="username" type="text" required maxLength={41} autoComplete="nickname"
-                placeholder="username" className={`${inputCls} pl-8 pr-3 font-mono`} />
+                autoCapitalize="off" spellCheck={false} placeholder="yourname" className="field pl-8" />
             </div>
-          </div>
-          <div>
-            <label htmlFor="email" className="block text-xs font-semibold text-slate-300 mb-1.5">Email Address *</label>
+          </Field>
+          <Field label="Email" htmlFor="email" hint="Only seen by moderators, never shown on stream.">
             <div className="relative">
-              <Mail className="w-3.5 h-3.5 absolute left-3.5 top-3 text-slate-500" />
+              <Mail aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-hint" />
               <input id="email" name="email" type="email" required maxLength={254} autoComplete="email"
-                placeholder="your.email@example.com" className={`${inputCls} pl-9 pr-3 font-mono`} />
+                inputMode="email" placeholder="you@example.com" className="field pl-10" />
             </div>
-          </div>
+          </Field>
           <div className="sm:col-span-2">
-            <label htmlFor="country" className="block text-xs font-semibold text-slate-300 mb-1.5">Country *</label>
-            <input id="country" name="country" type="text" required maxLength={60} autoComplete="country-name"
-              placeholder="e.g. United States, Portugal, Japan..." className={`${inputCls} px-3.5`} />
+            <Field label="Country" htmlFor="country">
+              <input id="country" name="country" type="text" required maxLength={60} autoComplete="country-name"
+                placeholder="Spain, Japan, Brazil…" className="field" />
+            </Field>
           </div>
         </div>
 
-        <div>
-          <label htmlFor="description" className="block text-xs font-semibold text-slate-300 mb-1.5">Room Description *</label>
-          <textarea id="description" name="description" required rows={4} maxLength={2000}
-            placeholder="Describe your room, specs, lighting setup, or backstory..."
-            className="w-full bg-[#0e0e13] border border-twitch-border rounded-xl p-3.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-twitch-purple transition resize-none" />
-        </div>
+        <Field
+          label="About your room"
+          htmlFor="description"
+          aside={<span className={`tabular-nums ${descLen > MAX_DESC - 100 ? "text-warning-text" : "text-subtle"}`}>{descLen}/{MAX_DESC}</span>}
+        >
+          <textarea id="description" name="description" required rows={4} maxLength={MAX_DESC}
+            onChange={(e) => setDescLen(e.target.value.length)}
+            placeholder="Your setup, lighting, favourite corner, the story behind it…"
+            className="field min-h-28 resize-y" />
+        </Field>
 
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="block text-xs font-semibold text-slate-300">Room Photos *</span>
-            <span className="text-[11px] font-mono text-slate-400">{media.length} / {MAX_FILES} Media Selected</span>
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <span id="photos-label" className="text-sm font-medium text-ink">Photos</span>
+            <span className="text-xs tabular-nums text-subtle">{media.length} of {MAX_FILES}</span>
           </div>
 
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => media.length < MAX_FILES && fileRef.current?.click()}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          <button
+            type="button"
+            aria-labelledby="photos-label"
+            aria-describedby="photos-help"
+            disabled={full || submitting}
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); if (!full) setDragging(true); }}
             onDragLeave={() => setDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
-            className={`border-2 border-dashed ${dragging ? "border-twitch-purple" : "border-twitch-border"} hover:border-twitch-purple rounded-2xl p-6 text-center cursor-pointer transition bg-[#0e0e13] group`}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); if (!full) addFiles(e.dataTransfer.files); }}
+            className={`group flex w-full flex-col items-center gap-3 rounded-2xl border border-dashed px-6 py-8 text-center transition-colors duration-150 disabled:cursor-not-allowed ${
+              dragging
+                ? "border-accent bg-accent/10"
+                : "border-line-strong bg-well hover:border-accent/70 hover:bg-accent/[0.04] disabled:hover:border-line-strong disabled:hover:bg-well"
+            }`}
           >
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden"
-              onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-            <div className="space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-twitch-card flex items-center justify-center text-slate-400 group-hover:text-twitch-neon transition border border-twitch-border">
-                <Clapperboard className="w-6 h-6" />
-              </div>
-              <p className="text-xs text-slate-300"><span className="text-twitch-neon font-semibold underline">Click to select & upload</span></p>
-              <p className="text-[11px] text-slate-500">Supports PNG, JPEG and WebP images (Max 5 total)</p>
-              <p className="text-[11px] text-slate-500"><b>Upload times will vary depending on the file size. Please be patient while your photos are uploading.</b></p>
-              <p className="text-[10px] text-slate-500"><b>Please be careful not to share any personal information that could reveal your identity or home address.</b></p>
-              <p className="text-[10px] text-slate-500"><b>Be sure to censor any parts of the photos that show you, your family members, or any names.</b></p>
-              <p className="text-[10px] text-slate-500">Location data (GPS/EXIF) is automatically removed from your photos.</p>
-            </div>
-          </div>
+            <span className={`flex size-11 items-center justify-center rounded-full border transition-colors duration-150 ${
+              dragging ? "border-accent text-accent-text" : "border-line text-muted group-hover:text-accent-text group-disabled:text-subtle"}`}>
+              <ImagePlus className="size-5" />
+            </span>
+            {full ? (
+              <span className="text-sm font-medium text-muted">Photo limit reached. Remove one to add another.</span>
+            ) : (
+              <span className="text-sm text-muted">
+                <span className="font-semibold text-accent-text">Choose photos</span> or drag them here
+              </span>
+            )}
+            <span id="photos-help" className="text-xs text-subtle">JPEG, PNG or WebP · up to {MAX_FILES} photos</span>
+          </button>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" tabIndex={-1}
+            onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
 
-          {media.length > 0 && (
-            <div className="grid grid-cols-5 gap-2.5 mt-3">
-              {media.map((m) => (
-                <div key={m.id} className="relative h-20 rounded-xl overflow-hidden border border-twitch-border bg-black">
+          {(media.length > 0 || processing > 0) && (
+            <ul className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
+              {media.map((m, i) => (
+                <li key={m.id} className="enter-zoom group relative aspect-square overflow-hidden rounded-xl border border-line bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.preview} alt="" className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => removeMedia(m.id)} aria-label="Remove photo"
-                    className="absolute top-1 right-1 p-1 rounded-full bg-black/80 text-white hover:bg-red-600 transition">
-                    <X className="w-3 h-3" />
+                  <img src={m.preview} alt={`Photo ${i + 1}`} className="size-full object-cover" />
+                  <button type="button" onClick={() => removeMedia(m.id)} aria-label={`Remove photo ${i + 1}`}
+                    className="pressable absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-full bg-black/75 text-white backdrop-blur-sm hover:bg-danger">
+                    <X className="size-3.5" />
                   </button>
-                </div>
+                </li>
               ))}
-            </div>
+              {Array.from({ length: processing }).map((_, i) => (
+                <li key={`p${i}`} className="flex aspect-square items-center justify-center rounded-xl border border-line bg-well" aria-label="Processing photo">
+                  <Loader2 className="size-5 animate-spin text-subtle" />
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
 
-        <Turnstile onToken={setToken} resetKey={captchaKey} />
+            <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-muted">
+              <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-text" />
+              <span>Make sure no <strong className="font-medium text-ink">people, names, addresses, documents or screens</strong> are visible. You&apos;ll see the full checklist before sending.</span>
+            </p>
+          </div>
 
         {error && (
-          <p role="alert" className="flex items-center gap-2 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
-            <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
+          <p role="alert" className="enter-fade flex items-start gap-2.5 rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-3 text-sm text-danger-text">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-danger-text" /> {error}
           </p>
         )}
 
-        <button type="submit" disabled={!!busy}
-          className="w-full bg-gradient-to-r from-twitch-purple to-cyber-pink hover:opacity-95 disabled:opacity-50 text-white font-bold py-3.5 px-6 rounded-xl text-xs uppercase tracking-wider transition active:scale-[0.98] shadow-xl glow-purple flex items-center justify-center space-x-2">
-          <Send className="w-4 h-4" />
-          <span>Submit</span>
-        </button>
-        <p className="text-xs sm:text-sm text-slate-400 text-center">
-          By submitting, you confirm that these are your photos and give permission for them to be featured on stream if approved.
-        </p>
-      </form>
-    </>
+        <div className="space-y-3">
+          <button type="submit" disabled={processing > 0}
+            className="pressable flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent px-6 text-[15px] font-semibold text-on-accent shadow-raised hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-accent/60">
+            Review and submit <ArrowRight className="size-4" />
+          </button>
+          <p className="text-center text-xs leading-relaxed text-subtle">
+            Nothing is sent until you confirm on the next step. Submissions are deleted automatically after {LEGAL.retentionDays} days.
+          </p>
+        </div>
+      </fieldset>
+
+      <ReviewDialog
+        open={reviewOpen}
+        onClose={() => { if (!submitting) setReviewOpen(false); }}
+        summary={summary}
+        media={media}
+        consents={consents}
+        setConsent={(k, v) => setConsents((c) => ({ ...c, [k]: v }))}
+        onToken={setToken}
+        captchaKey={captchaKey}
+        error={reviewError}
+        progress={progress}
+        canSend={allConsents && !!token}
+        onSend={send}
+      />
+    </form>
+  );
+}
+
+function Field({ label, htmlFor, hint, aside, children }: {
+  label: string; htmlFor: string; hint?: string; aside?: React.ReactNode; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-ink">{label}</label>
+        {aside && <span className="text-xs">{aside}</span>}
+      </div>
+      {children}
+      {hint && <p className="mt-1.5 text-xs text-subtle">{hint}</p>}
+    </div>
+  );
+}
+
+function Consent({ name, checked, onChange, children }: {
+  name: string; checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-well px-3.5 py-3 text-[13px] leading-relaxed text-muted transition-colors duration-150 hover:border-line-strong has-[:checked]:border-accent/60 has-[:checked]:bg-accent/[0.06]">
+      <input type="checkbox" name={name} checked={checked} onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 size-[18px] shrink-0 cursor-pointer rounded accent-[var(--color-accent)]" />
+      <span>{children}</span>
+    </label>
+  );
+}
+
+function PhotoGuidelines() {
+  return (
+    <details className="group rounded-xl border border-line bg-well open:pb-1" open>
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3.5 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
+        <ShieldAlert className="size-4 shrink-0 text-warning-text" />
+        <span className="flex-1">Last check: is anything personal visible in your photos?</span>
+        <span className="text-xs text-subtle group-open:hidden">Show</span>
+        <span className="hidden text-xs text-subtle group-open:inline">Hide</span>
+      </summary>
+      <div className="space-y-4 px-4 pb-4 text-[13px] leading-relaxed text-muted">
+        <div>
+          <p className="font-medium text-ink">If any photo shows one of these, go back and replace, crop or blur it</p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 marker:text-subtle">
+            <li><strong className="font-medium text-ink">People:</strong> faces or bodies of you, family, flatmates or anyone else, including in photos, frames, posters, mirrors and screen reflections. <strong className="font-medium text-ink">Never include children.</strong></li>
+            <li><strong className="font-medium text-ink">Names and addresses:</strong> letters, parcels and labels, diplomas, name tags, house numbers, keys with tags.</li>
+            <li><strong className="font-medium text-ink">Documents and cards:</strong> ID, bank cards, tickets, prescriptions, contracts, anything with a QR code or barcode.</li>
+            <li><strong className="font-medium text-ink">Screens:</strong> monitors, phones and TVs showing accounts, chats, emails, notifications or passwords. Turn them off or show a neutral wallpaper.</li>
+            <li><strong className="font-medium text-ink">Location clues:</strong> views from windows, street signs, landmarks, car number plates, router or Wi-Fi stickers.</li>
+            <li><strong className="font-medium text-ink">Sensitive information:</strong> anything revealing health (medication, medical devices), religion, political views, sexual orientation or other private beliefs, unless you&apos;re comfortable sharing it publicly.</li>
+          </ul>
+        </div>
+        <div>
+          <p className="font-medium text-ink">Good to know</p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 marker:text-subtle">
+            <li>Only upload photos you took yourself, of a space you live in or have permission to show.</li>
+            <li>Location and camera data (GPS/EXIF) is removed from your photos automatically, but nothing else is changed.</li>
+            <li>If approved, your photos are shown <strong className="font-medium text-ink">live to a public audience</strong>. Viewers may record or clip the stream, and copies made by others can&apos;t be fully removed.</li>
+            <li>After sending you get a <strong className="font-medium text-ink">deletion code</strong> to remove your submission at any time.</li>
+          </ul>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+type DialogProps = {
+  open: boolean;
+  onClose: () => void;
+  summary: { username: string; country: string };
+  media: Picked[];
+  consents: Consents;
+  setConsent: (k: keyof Consents, v: boolean) => void;
+  onToken: (t: string) => void;
+  captchaKey: number;
+  error: string | null;
+  progress: Progress | null;
+  canSend: boolean;
+  onSend: () => void;
+};
+
+function ReviewDialog({ open, onClose, summary, media, consents, setConsent, onToken, captchaKey, error, progress, canSend, onSend }: DialogProps) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const sending = progress !== null;
+
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) {
+      d.showModal();
+      d.scrollTop = 0;
+      document.body.style.overflow = "hidden";
+    } else if (!open && d.open) {
+      d.close();
+    }
+    if (!open) document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby="review-title"
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="review-dialog m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-2xl overflow-hidden rounded-2xl border border-line bg-card p-0 text-ink shadow-float"
+    >
+      {open && (
+        <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col">
+          <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
+            <div className="min-w-0">
+              <h3 id="review-title" className="text-lg font-semibold text-white">Review and send</h3>
+              <p className="mt-0.5 truncate text-sm text-muted">
+                @{summary.username} · {summary.country} · {media.length} {media.length === 1 ? "photo" : "photos"}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} disabled={sending} aria-label="Back to edit"
+              className="pressable -m-1 rounded-lg p-1.5 text-subtle hover:text-white disabled:opacity-40">
+              <X className="size-5" />
+            </button>
+          </header>
+
+          <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+            <ul className="flex gap-2 overflow-x-auto" aria-label="Your photos">
+              {media.map((m, i) => (
+                <li key={m.id} className="size-20 shrink-0 overflow-hidden rounded-lg border border-line bg-black">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={m.preview} alt={`Photo ${i + 1}`} className="size-full object-cover" />
+                </li>
+              ))}
+            </ul>
+
+            <PhotoGuidelines />
+
+            <BasicInfo />
+
+            <fieldset className="space-y-3" disabled={sending}>
+              <legend className="mb-3 text-sm font-medium text-ink">Please confirm</legend>
+              <Consent name="consent_age" checked={consents.age} onChange={(v) => setConsent("age", v)}>
+                I am <strong className="font-semibold text-ink">{LEGAL.minAge} or older</strong>.
+              </Consent>
+              <Consent name="consent_third_parties" checked={consents.thirdParties} onChange={(v) => setConsent("thirdParties", v)}>
+                My photos don&apos;t show <strong className="font-semibold text-ink">people or children</strong> (including me),
+                names, addresses, documents or other personal or sensitive information.
+              </Consent>
+              <Consent name="consent_broadcast" checked={consents.broadcast} onChange={(v) => setConsent("broadcast", v)}>
+                I took these photos or own the rights to them, and I agree they may be shown{" "}
+                <strong className="font-semibold text-ink">live on {LEGAL.broadcastPlatform}</strong> together with my username,
+                country and description. I understand the stream is public and may be recorded or clipped.{" "}
+                <Link href="/privacy#photos" target="_blank" className="font-medium text-accent-text underline underline-offset-4">Photo terms</Link>
+              </Consent>
+              <Consent name="consent_privacy" checked={consents.privacy} onChange={(v) => setConsent("privacy", v)}>
+                I have read the{" "}
+                <Link href="/privacy" target="_blank" className="font-medium text-accent-text underline underline-offset-4">privacy policy</Link>{" "}
+                and agree to my data being processed to review my room. I can withdraw at any time by deleting my submission.
+              </Consent>
+            </fieldset>
+
+            {/* El captcha solo se carga en este paso: Cloudflare no recibe nada de quien no llega a enviar */}
+            <Turnstile onToken={onToken} resetKey={captchaKey} />
+          </div>
+
+          <footer className="space-y-3 border-t border-line bg-panel px-5 py-4 sm:px-6">
+            {error && (
+              <p role="alert" className="enter-fade flex items-start gap-2.5 rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-3 text-sm text-danger-text">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" /> {error}
+              </p>
+            )}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <button type="button" onClick={onClose} disabled={sending}
+                className="pressable flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-line px-5 text-sm font-semibold text-muted hover:border-line-strong hover:text-white disabled:opacity-40">
+                <ArrowLeft className="size-4" /> Back to edit
+              </button>
+              <button type="button" onClick={onSend} disabled={!canSend || sending}
+                className="pressable relative flex h-12 shrink-0 items-center sm:flex-1 justify-center gap-2 overflow-hidden rounded-xl bg-accent px-6 text-[15px] font-semibold text-on-accent shadow-raised hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-accent/45 disabled:text-on-accent/70">
+                {sending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    <span aria-live="polite">{progress.label}</span>
+                    <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 bg-white/15">
+                      <span className="block h-full origin-left bg-white/70 transition-transform duration-300 ease-out"
+                        style={{ transform: `scaleX(${(progress.done + 0.5) / progress.total})` }} />
+                    </span>
+                  </>
+                ) : (
+                  <><Send className="size-4" /> Send submission</>
+                )}
+              </button>
+            </div>
+            {!canSend && !sending && (
+              <p className="text-center text-xs text-subtle">Tick all four boxes and complete the verification to send.</p>
+            )}
+          </footer>
+        </div>
+      )}
+    </dialog>
+  );
+}
+
+/** Primera capa informativa (art. 13 RGPD + art. 11 LOPDGDD), justo antes de enviar los datos. */
+function BasicInfo() {
+  const rows: [string, React.ReactNode][] = [
+    ["Controller", <>{LEGAL.controllerName} · <a href={`mailto:${LEGAL.contactEmail}`} className="text-accent-text underline underline-offset-4">{LEGAL.contactEmail}</a></>],
+    ["Purpose", "Review your room and, if approved, show it on stream."],
+    ["Legal basis", "Your consent (below). Anti-abuse checks: legitimate interest."],
+    ["Recipients", <>Moderators; the stream audience (approved photos, username, country and description only); service providers Supabase, Vercel and Cloudflare, with US transfers under EU safeguards.</>],
+    ["Retention", `Deleted automatically after ${LEGAL.retentionDays} days, or sooner if you delete it.`],
+    ["Your rights", "Access, correction, deletion, objection, portability and withdrawing consent. Use your deletion code or email us. You can complain to a data protection authority."],
+  ];
+  return (
+    <section aria-labelledby="basic-info" className="rounded-xl border border-line">
+      <h4 id="basic-info" className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm font-medium text-ink">
+        <Info className="size-4 text-accent-text" /> How your data is used
+      </h4>
+      <dl className="divide-y divide-line text-[13px] leading-relaxed">
+        {rows.map(([k, v]) => (
+          <div key={k} className="grid gap-1 px-4 py-2.5 sm:grid-cols-[8.5rem_1fr] sm:gap-4">
+            <dt className="font-medium text-subtle">{k}</dt>
+            <dd className="text-muted">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="border-t border-line px-4 py-2.5 text-[13px] text-muted">
+        Full details:{" "}
+        <Link href="/privacy" target="_blank" className="font-medium text-accent-text underline underline-offset-4">privacy policy</Link>
+        {" · "}
+        <Link href="/privacy?lang=es" target="_blank" className="font-medium text-accent-text underline underline-offset-4">en español</Link>
+      </p>
+    </section>
   );
 }

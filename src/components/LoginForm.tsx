@@ -2,39 +2,42 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Lock, Loader2, AlertCircle } from "lucide-react";
 import { login, type LoginState } from "@/actions/auth";
 
 export default function LoginForm({ role, next }: { role: "admin" | "viewer"; next: string }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(login, {});
+  const title = role === "admin" ? "Admin queue" : "Streamer view";
 
   return (
-    <div className="bg-twitch-card border border-twitch-border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-2xl">
-      <div className="text-center space-y-2">
-        <div className="w-12 h-12 rounded-2xl bg-twitch-purple/20 border border-twitch-purple/40 text-twitch-neon flex items-center justify-center mx-auto">
-          <Lock className="w-6 h-6" />
-        </div>
-        <h3 className="text-lg font-bold text-white">{role === "admin" ? "Admin Verification" : "Streamer Deck Access"}</h3>
-        <p className="text-xs text-slate-400">Please enter password to unlock.</p>
+    <div className="enter-zoom w-full max-w-sm rounded-2xl border border-line bg-card p-6 shadow-float sm:p-7">
+      <div className="flex size-11 items-center justify-center rounded-xl bg-accent/15 text-accent-text">
+        <Lock className="size-5" />
       </div>
+      <h2 className="mt-4 text-xl font-bold tracking-tight text-white">{title}</h2>
+      <p className="mt-1 text-sm text-muted">Enter the password to continue.</p>
 
-      <form action={action} className="space-y-4">
+      <form action={action} className="mt-6 space-y-4">
         <input type="hidden" name="role" value={role} />
         <input type="hidden" name="next" value={next} />
         <div>
-          <label htmlFor="password" className="sr-only">Password</label>
-          <input id="password" name="password" type="password" required autoFocus autoComplete="current-password" maxLength={256}
-            placeholder="Enter password"
-            className="w-full bg-[#0e0e13] border border-twitch-border rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-twitch-purple font-mono" />
-          {state.error && <p role="alert" className="text-[11px] text-red-400 mt-1.5 text-center font-mono">{state.error}</p>}
+          <label htmlFor="password" className="mb-2 block text-sm font-medium text-ink">Password</label>
+          <input id="password" name="password" type="password" required autoFocus autoComplete="current-password"
+            maxLength={256} aria-invalid={state.error ? true : undefined} aria-describedby={state.error ? "pw-error" : undefined}
+            className="field" />
+          {state.error && (
+            <p id="pw-error" role="alert" className="mt-2 flex items-center gap-1.5 text-sm text-danger-text">
+              <AlertCircle className="size-4 shrink-0" /> {state.error}
+            </p>
+          )}
         </div>
-        <div className="flex items-center space-x-2">
-          <Link href="/" className="w-1/2 py-2.5 border border-twitch-border bg-[#0e0e13] hover:bg-twitch-border text-slate-300 rounded-xl text-xs font-semibold transition text-center">
+        <div className="flex gap-2 pt-1">
+          <Link href="/" className="pressable flex h-11 flex-1 items-center justify-center rounded-xl border border-line text-sm font-semibold text-muted hover:border-line-strong hover:text-white">
             Cancel
           </Link>
           <button type="submit" disabled={pending}
-            className="w-1/2 py-2.5 bg-twitch-purple hover:bg-twitch-neon disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-lg glow-purple">
-            {pending ? "Checking..." : "Unlock"}
+            className="pressable flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-on-accent shadow-raised hover:bg-accent-hover disabled:bg-accent/60">
+            {pending ? <><Loader2 className="size-4 animate-spin" /> Checking…</> : "Unlock"}
           </button>
         </div>
       </form>

@@ -7,38 +7,32 @@ import NavLinks from "./NavLinks";
 export default async function Navbar() {
   const session = await getSession();
   return (
-    <header className="sticky top-0 z-40 bg-[#0d0d12]/90 backdrop-blur-md border-b border-twitch-border">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-2">
-          <Link href="/" className="flex items-center space-x-3">
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-twitch-purple to-cyber-cyan rounded-xl blur opacity-70 group-hover:opacity-100 transition" />
-              <div className="relative w-10 h-10 rounded-xl bg-twitch-card border border-twitch-purple flex items-center justify-center text-twitch-neon">
-                <Video className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="hidden min-[420px]:block">
-              <h1 className="text-base font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-twitch-neon bg-clip-text text-transparent">
-                tokyogh0uul
-              </h1>
-              <p className="text-[11px] text-slate-400 font-mono">Room Review</p>
-            </div>
-          </Link>
+    <header className="sticky top-0 z-40 border-b border-line bg-ground/85 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="pressable flex items-center gap-3 rounded-xl" aria-label="tokyogh0uul Room Review, home">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-accent text-on-accent shadow-raised">
+            <Video className="size-[18px]" strokeWidth={2.25} />
+          </span>
+          <span className="hidden leading-tight min-[480px]:block">
+            <span className="block text-[15px] font-extrabold tracking-tight text-white">tokyogh0uul</span>
+            <span className="block text-xs font-medium text-muted">Room Review</span>
+          </span>
+        </Link>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            <NavLinks role={session?.role ?? null} />
-            {session && (
-              <form action={logout}>
-                <button
-                  type="submit"
-                  title="Log out"
-                  className="p-2 rounded-xl text-slate-400 hover:text-white bg-twitch-card border border-twitch-border transition"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </form>
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <NavLinks role={session?.role ?? null} />
+          {session && (
+            <form action={logout}>
+              <button
+                type="submit"
+                aria-label="Log out"
+                title="Log out"
+                className="pressable flex size-9 items-center justify-center rounded-xl border border-line text-muted hover:border-line-strong hover:text-white"
+              >
+                <LogOut className="size-4" />
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </header>

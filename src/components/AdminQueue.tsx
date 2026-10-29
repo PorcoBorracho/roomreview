@@ -2,31 +2,43 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ShieldCheck, Search, Inbox, Mail, Check, Trash2, Undo2, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Inbox, Mail, Check, Trash2, Undo2, AlertCircle, ChevronLeft, ChevronRight, Loader2, X, ShieldAlert, Eye, EyeOff } from "lucide-react";
 import { approveSubmission, deleteSubmission, unapproveSubmission } from "@/actions/admin";
 import type { AdminSubmission } from "@/lib/types";
 import Lightbox from "./Lightbox";
+import HoldButton from "./HoldButton";
 
+type Status = "pending" | "approved" | "all";
 type Props = {
   submissions: AdminSubmission[];
   filtered: number;
   total: number;
-  status: "pending" | "approved" | "all";
+  status: Status;
   q: string;
   page: number;
   pageSize: number;
 };
 
+const TABS: { value: Status; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "all", label: "All" },
+];
+
 export default function AdminQueue({ submissions, filtered, total, status, q, page, pageSize }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(q);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ subId: string; index: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{ id: string; action: string } | null>(null);
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
+  const [showEmails, setShowEmails] = useState(false);
   const [, startTransition] = useTransition();
 
-  function go(params: { status?: string; q?: string; page?: number }) {
+  useEffect(() => setLeaving(new Set()), [submissions]);
+
+  function go(params: { status?: Status; q?: string; page?: number }) {
     const sp = new URLSearchParams();
     const s = params.status ?? status;
     const query = params.q ?? search;
@@ -34,158 +46,223 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
     if (query.trim()) sp.set("q", query.trim());
     if ((params.page ?? 1) > 1) sp.set("page", String(params.page));
     const qs = sp.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
   useEffect(() => {
     if (search === q) return;
-    const t = setTimeout(() => go({ q: search, page: 1 }), 350);
+    const t = setTimeout(() => go({ q: search, page: 1 }), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  function run(id: string, fn: (id: string) => Promise<{ ok: boolean; error?: string }>) {
+  function run(id: string, action: string, fn: (id: string) => Promise<{ ok: boolean; error?: string }>, removes: boolean) {
     setError(null);
-    setBusyId(id);
+    setBusy({ id, action });
     startTransition(async () => {
       const res = await fn(id);
-      if (!res.ok) setError(res.error ?? "Action failed");
-      setBusyId(null);
+      if (!res.ok) setError(res.error ?? "That action didn't go through. Try again.");
+      else if (removes) setLeaving((s) => new Set(s).add(id));
+      setBusy(null);
       router.refresh();
     });
   }
 
   const pages = Math.max(1, Math.ceil(filtered / pageSize));
   const offset = (page - 1) * pageSize;
+  const open = viewer ? submissions.find((s) => s.id === viewer.subId) : null;
+  const openCount = open?.media.length ?? 0;
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-twitch-card p-5 rounded-2xl border border-twitch-border">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-cyber-yellow" /> Admin Approval Queue
-            </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-twitch-purple/20 text-twitch-neon border border-twitch-purple/30">
-              Viewing {filtered} of {total} Submissions
-            </span>
-          </div>
-          <p className="text-xs text-slate-400">Approve or delete pending room review submissions.</p>
+    <section>
+      <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">Admin queue</h2>
+          <p className="mt-1 text-sm text-muted">
+            <span className="tabular-nums">{filtered}</span> {status === "all" ? "shown" : status}
+            <span className="mx-1.5 text-subtle">·</span>
+            <span className="tabular-nums">{total}</span> total
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-grow sm:flex-grow-0 sm:w-64">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={60}
-              placeholder="Search username or country..."
-              className="w-full bg-[#0e0e13] border border-twitch-border text-xs rounded-xl pl-9 pr-3 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-twitch-purple" />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div role="tablist" aria-label="Filter by status" className="flex rounded-xl border border-line bg-well p-1">
+            {TABS.map((t) => (
+              <button key={t.value} role="tab" aria-selected={status === t.value}
+                onClick={() => status !== t.value && go({ status: t.value, page: 1 })}
+                className={`pressable h-8 flex-1 rounded-lg px-3.5 text-[13px] font-semibold sm:flex-none ${
+                  status === t.value ? "bg-raised text-white shadow-raised" : "text-muted hover:text-white"}`}>
+                {t.label}
+              </button>
+            ))}
           </div>
-          <select value={status} onChange={(e) => go({ status: e.target.value, page: 1 })}
-            className="bg-[#0e0e13] border border-twitch-border text-xs text-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-twitch-purple">
-            <option value="pending">Pending Approval</option>
-            <option value="approved">Approved</option>
-            <option value="all">All Submissions</option>
-          </select>
+          <div className="relative sm:w-72">
+            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-hint" />
+            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={60}
+              aria-label="Search by username or country" placeholder="Search username or country"
+              className="field h-10 py-0 pr-9 pl-10 [&::-webkit-search-cancel-button]:hidden" />
+            {search && (
+              <button onClick={() => setSearch("")} aria-label="Clear search"
+                className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-subtle hover:text-white">
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
         </div>
+      </header>
+
+      <div className="mt-6 flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-3.5 text-[13px] leading-relaxed text-muted sm:flex-row sm:items-start">
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-text" />
+        <div className="flex-1">
+          <p className="font-medium text-ink">This page contains personal data. Never show it on stream or share screenshots.</p>
+          <p className="mt-0.5">
+            Before approving, check every photo for faces, children, names, addresses, documents, screens, reflections and location clues.
+            If something slipped through, delete the submission. Email requests to delete data must be handled within one month.
+          </p>
+        </div>
+        <button onClick={() => setShowEmails((v) => !v)}
+          className="pressable flex h-8 shrink-0 items-center gap-1.5 self-start rounded-lg border border-line px-2.5 text-xs font-semibold text-muted hover:text-white">
+          {showEmails ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />} {showEmails ? "Hide emails" : "Show emails"}
+        </button>
       </div>
 
       {error && (
-        <p role="alert" className="flex items-center gap-2 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
-          <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
+        <p role="alert" className="enter-fade mt-6 flex items-start gap-2.5 rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-3 text-sm text-danger-text">
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-danger-text" /> {error}
         </p>
       )}
 
       {submissions.length === 0 ? (
-        <div className="text-center py-16 bg-twitch-card/40 rounded-2xl border border-dashed border-twitch-border">
-          <Inbox className="w-10 h-10 mx-auto text-slate-600 mb-2" />
-          <h3 className="text-sm font-bold text-slate-300">No Submissions Found</h3>
-          <p className="text-xs text-slate-500 mt-1">There are currently no submissions matching your criteria.</p>
+        <div className="mt-6 rounded-2xl border border-dashed border-line px-6 py-16 text-center">
+          <Inbox className="mx-auto size-8 text-subtle" />
+          <h3 className="mt-3 text-base font-semibold text-white">
+            {q ? "No matches" : status === "pending" ? "You're all caught up" : "Nothing here yet"}
+          </h3>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
+            {q ? `No submissions match "${q}". Try a different username or country.`
+              : status === "pending" ? "New room submissions will show up here for review."
+              : "Approved submissions will appear here."}
+          </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <ol className="mt-6 space-y-3">
           {submissions.map((sub, index) => {
             const approved = sub.status === "approved";
-            const busy = busyId === sub.id;
+            const isBusy = busy?.id === sub.id;
+            const gone = leaving.has(sub.id);
             return (
-              <div key={sub.id} className={`bg-twitch-card border border-twitch-border p-5 rounded-2xl space-y-4 shadow-xl ${busy ? "opacity-60" : ""}`}>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-twitch-border/60">
-                  <div className="flex items-center space-x-3 min-w-0">
-                    <span className="w-8 h-8 rounded-xl bg-[#0e0e13] border border-twitch-purple/40 text-twitch-neon font-mono font-bold text-xs flex items-center justify-center shrink-0">
-                      #{offset + index + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-base font-bold text-white font-mono truncate">@{sub.username}</h3>
-                        <span className="text-xs text-slate-300 shrink-0">• {sub.country}</span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-2 mt-0.5">
-                        <span className="text-[11px] font-mono text-cyber-cyan flex items-center gap-1 break-all">
-                          <Mail className="w-3 h-3 shrink-0" /> {sub.email}
+              <li key={sub.id}
+                className={`rounded-2xl border border-line bg-card p-4 shadow-raised transition-[opacity,transform] duration-200 ease-out sm:p-5 ${
+                  gone ? "pointer-events-none scale-[0.98] opacity-0" : ""} ${isBusy ? "opacity-70" : ""}`}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                      <span className="text-sm tabular-nums text-subtle">#{offset + index + 1}</span>
+                      <h3 className="max-w-full truncate font-mono text-base font-semibold text-white">@{sub.username}</h3>
+                      <span className="text-sm text-muted">{sub.country}</span>
+                      {status === "all" && (
+                        <span className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${
+                          approved ? "bg-success/15 text-success-text" : "bg-warning/15 text-warning-text"}`}>
+                          {approved ? "Approved" : "Pending"}
                         </span>
-                        <span className="text-slate-600">•</span>
-                        <span className="text-[10px] font-mono text-slate-500">Submitted: {new Date(sub.submittedAt).toLocaleDateString()}</span>
-                      </div>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-subtle">
+                      {showEmails ? (
+                        <a href={`mailto:${sub.email}`} className="inline-flex min-w-0 items-center gap-1.5 break-all text-highlight/90 underline-offset-4 hover:underline">
+                          <Mail className="size-3.5 shrink-0" /> {sub.email}
+                        </a>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5"><Mail className="size-3.5 shrink-0" /> {maskEmail(sub.email)}</span>
+                      )}
+                      <time dateTime={sub.submittedAt}>{formatDate(sub.submittedAt)}</time>
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                  <div className="flex shrink-0 items-center gap-2">
                     {approved ? (
-                      <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">Approved</span>
-                    ) : (
-                      <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">Pending Approval</span>
-                    )}
-                    {approved ? (
-                      <button disabled={busy} onClick={() => run(sub.id, unapproveSubmission)} title="Move back to pending"
-                        className="px-3 py-1.5 bg-[#0e0e13] hover:bg-twitch-border text-slate-300 border border-twitch-border rounded-xl text-xs font-bold transition flex items-center gap-1">
-                        <Undo2 className="w-4 h-4" />
+                      <button disabled={isBusy} onClick={() => run(sub.id, "undo", unapproveSubmission, status === "approved")}
+                        className="pressable flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-muted hover:border-line-strong hover:text-white">
+                        {isBusy && busy?.action === "undo" ? <Loader2 className="size-4 animate-spin" /> : <Undo2 className="size-4" />}
+                        Move to pending
                       </button>
                     ) : (
-                      <button disabled={busy} onClick={() => run(sub.id, approveSubmission)}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md">
-                        <Check className="w-4 h-4" /> Approve
+                      <button disabled={isBusy} onClick={() => run(sub.id, "approve", approveSubmission, status === "pending")}
+                        className="pressable flex h-9 items-center gap-1.5 rounded-xl bg-success px-3.5 text-[13px] font-semibold text-white shadow-raised hover:bg-success-hover">
+                        {isBusy && busy?.action === "approve" ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                        Approve
                       </button>
                     )}
-                    <button disabled={busy}
-                      onClick={() => { if (window.confirm(`Delete @${sub.username}'s submission permanently?`)) run(sub.id, deleteSubmission); }}
-                      className="px-3.5 py-1.5 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1">
-                      <Trash2 className="w-4 h-4" /> Delete
-                    </button>
+                    <HoldButton
+                      disabled={isBusy}
+                      onConfirm={() => run(sub.id, "delete", deleteSubmission, true)}
+                      label="Delete"
+                      holdingLabel="Hold…"
+                      icon={<Trash2 className="size-4" />}
+                      className="flex h-9 items-center rounded-xl border border-danger/30 px-3 text-[13px] font-semibold text-danger-text hover:border-danger/60"
+                      fillClassName="bg-danger text-white"
+                    />
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-300 leading-relaxed bg-[#0e0e13] p-3 rounded-xl border border-twitch-border/60 whitespace-pre-line break-words">
-                  “{sub.description}”
+                <p className="mt-4 max-w-[70ch] text-sm leading-relaxed whitespace-pre-line break-words text-ink/90">
+                  {sub.description}
                 </p>
 
-                <div>
-                  <span className="text-[11px] font-mono text-slate-400 block mb-2">Attached Server Media ({sub.media.length} items):</span>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {sub.media.map((m) => (
-                      <button key={m.id} type="button" onClick={() => setLightbox(m.url)}
-                        className="relative h-20 rounded-xl overflow-hidden border border-twitch-border bg-black hover:opacity-80 transition">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={m.url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                      </button>
+                {sub.media.length > 0 && (
+                  <ul className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-6" aria-label={`${sub.media.length} photos`}>
+                    {sub.media.map((m, i) => (
+                      <li key={m.id}>
+                        <button type="button" onClick={() => setViewer({ subId: sub.id, index: i })}
+                          aria-label={`Open photo ${i + 1} of ${sub.media.length}`}
+                          className="pressable block aspect-[4/3] w-full overflow-hidden rounded-xl border border-line bg-black hover:border-accent/70">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={m.url} alt="" loading="lazy" className="size-full object-cover" />
+                        </button>
+                      </li>
                     ))}
-                  </div>
-                </div>
-              </div>
+                  </ul>
+                )}
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
 
       {pages > 1 && (
-        <div className="flex items-center justify-center gap-3 text-xs font-mono text-slate-400">
-          <button disabled={page <= 1} onClick={() => go({ page: page - 1 })}
-            className="p-2 rounded-lg bg-twitch-card border border-twitch-border disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
-          <span>Page {page} / {pages}</span>
-          <button disabled={page >= pages} onClick={() => go({ page: page + 1 })}
-            className="p-2 rounded-lg bg-twitch-card border border-twitch-border disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
-        </div>
+        <nav aria-label="Pagination" className="mt-6 flex items-center justify-center gap-3 text-sm text-muted">
+          <button disabled={page <= 1} onClick={() => go({ page: page - 1 })} aria-label="Previous page"
+            className="pressable flex size-9 items-center justify-center rounded-xl border border-line hover:text-white disabled:opacity-40">
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="tabular-nums">Page {page} of {pages}</span>
+          <button disabled={page >= pages} onClick={() => go({ page: page + 1 })} aria-label="Next page"
+            className="pressable flex size-9 items-center justify-center rounded-xl border border-line hover:text-white disabled:opacity-40">
+            <ChevronRight className="size-4" />
+          </button>
+        </nav>
       )}
 
-      <Lightbox url={lightbox} onClose={() => setLightbox(null)} />
+      <Lightbox
+        url={open && viewer ? open.media[viewer.index]?.url ?? null : null}
+        caption={open && viewer ? `@${open.username} · ${viewer.index + 1} / ${openCount}` : undefined}
+        onClose={() => setViewer(null)}
+        onPrev={openCount > 1 ? () => setViewer((v) => v && { ...v, index: (v.index - 1 + openCount) % openCount }) : undefined}
+        onNext={openCount > 1 ? () => setViewer((v) => v && { ...v, index: (v.index + 1) % openCount }) : undefined}
+      />
     </section>
   );
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+/** j***@e***.com: suficiente para reconocerlo sin exponerlo si la pantalla sale en directo */
+function maskEmail(email: string) {
+  const [user, domain = ""] = email.split("@");
+  const dot = domain.lastIndexOf(".");
+  const name = dot > 0 ? domain.slice(0, dot) : domain;
+  const tld = dot > 0 ? domain.slice(dot) : "";
+  return `${user.slice(0, 1)}***@${name.slice(0, 1)}***${tld}`;
 }

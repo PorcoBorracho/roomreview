@@ -1,29 +1,182 @@
 @import "tailwindcss";
 
 @theme {
-  --color-twitch-purple: #9146ff;
-  --color-twitch-dark: #0e0e10;
-  --color-twitch-card: #18181b;
-  --color-twitch-border: #2f2f35;
-  --color-twitch-neon: #a970ff;
+  /* ── Superficies (de más profunda a más elevada) ── */
+  --color-stage: oklch(0.115 0.005 285);        /* fondo detrás de las fotos */
+  --color-ground: oklch(0.145 0.006 285);       /* fondo de página */
+  --color-panel: oklch(0.165 0.006 285);        /* paneles laterales */
+  --color-well: oklch(0.175 0.006 285);         /* campos de formulario */
+  --color-card: oklch(0.205 0.006 285);         /* tarjetas */
+  --color-raised: oklch(0.245 0.006 285);       /* elementos elevados, hover */
+  --color-line: oklch(0.290 0.006 285);         /* bordes */
+  --color-line-strong: oklch(0.355 0.006 285);  /* bordes en hover */
 
-  --color-cyber-pink: #ff2a85;
-  --color-cyber-cyan: #00f0ff;
-  --color-cyber-green: #00ff66;
-  --color-cyber-yellow: #ffe600;
+  /* ── Texto (contraste AA verificado sobre card y well) ── */
+  --color-ink: oklch(0.950 0.003 285);
+  --color-muted: oklch(0.770 0.005 285);
+  --color-subtle: oklch(0.680 0.006 285);
+  --color-hint: oklch(0.630 0.006 285);
 
-  --font-sans: "Inter Variable", "Inter", sans-serif;
-  --font-mono: "Fira Code", "JetBrains Mono", monospace;
+  /* ── Acento de marca · paleta "Grafito y violeta" (OKLCH) ── */
+  --color-accent: oklch(0.580 0.210 293);
+  --color-accent-hover: oklch(0.640 0.200 293);
+  --color-accent-text: oklch(0.770 0.130 293);  /* acento usado como texto o icono */
+  --color-on-accent: oklch(0.990 0.000 0);    /* texto sobre fondo de acento */
+  --color-highlight: oklch(0.800 0.110 293);    /* indicador de foto activa */
+
+  /* ── Estados ── */
+  --color-success: oklch(0.520 0.120 155);
+  --color-success-hover: oklch(0.570 0.130 155);
+  --color-success-text: oklch(0.800 0.120 155);
+  --color-danger: oklch(0.580 0.190 25);
+  --color-danger-text: oklch(0.800 0.100 25);
+  --color-warning: oklch(0.800 0.130 80);
+  --color-warning-text: oklch(0.860 0.100 85);
+
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-mono: "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+
+  /* Curvas de movimiento (Emil Kowalski) */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-float: 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 40px -12px rgb(0 0 0 / 0.75);
+}
+
+html {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background-color: #08080c;
-  color: #efeff1;
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #0e0e10; }
-::-webkit-scrollbar-thumb { background: #2f2f35; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #9146ff; }
+/* Superficies del navegador también con el diseño */
+::selection { background: var(--color-accent); color: var(--color-on-accent); }
+input, textarea { caret-color: var(--color-accent-text); }
+::placeholder { color: var(--color-hint); opacity: 1; }
 
-.glow-purple { box-shadow: 0 0 20px rgba(145, 70, 255, 0.3); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-ground); }
+::-webkit-scrollbar-thumb { background: var(--color-line); border-radius: 8px; border: 2px solid var(--color-ground); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }
+* { scrollbar-color: var(--color-line) transparent; }
+
+/* Foco visible y coherente para teclado */
+:focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: none;
+}
+
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+@layer components {
+  /* Respuesta táctil al pulsar: scale 0.97, 160 ms */
+  .pressable {
+    transition-property: transform, background-color, border-color, color, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: var(--ease-out);
+  }
+  .pressable:active:not(:disabled) { transform: scale(0.97); }
+
+  .field {
+    width: 100%;
+    background: var(--color-well);
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem;
+    color: var(--color-ink);
+    /* 16 px en móvil para que iOS no haga zoom al enfocar */
+    font-size: 1rem;
+    line-height: 1.5rem;
+    padding: 0.625rem 0.875rem;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  @media (min-width: 640px) {
+    .field { font-size: 0.875rem; line-height: 1.25rem; }
+  }
+  .field:hover { border-color: var(--color-line-strong); }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 28%, transparent);
+  }
+  .field[aria-invalid="true"] { border-color: var(--color-danger); }
+
+  /* Entrada de toasts y diálogos: sin JS, interrumpible */
+  .enter-rise {
+    transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out);
+    @starting-style { opacity: 0; transform: translateY(8px); }
+  }
+  .enter-fade {
+    transition: opacity 200ms var(--ease-out);
+    @starting-style { opacity: 0; }
+  }
+  .enter-zoom {
+    transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+    @starting-style { opacity: 0; transform: scale(0.96); }
+  }
+
+  /* Pulsar y mantener para borrar: lento al decidir, rápido al soltar */
+  .hold-fill {
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path 200ms var(--ease-out);
+  }
+  .hold-fill[data-holding="true"] {
+    clip-path: inset(0 0 0 0);
+    transition: clip-path var(--hold-ms, 1200ms) linear;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressable:active:not(:disabled) { transform: none; }
+  .enter-rise, .enter-zoom { @starting-style { transform: none; } }
+  .animate-spin { animation-duration: 1.5s; }
+}
+
+/* Zoom de fotos: suave con botones/rueda, inmediato mientras se arrastra o pellizca */
+.zoom-img {
+  transform-origin: center;
+  will-change: transform;
+  transition: transform 220ms var(--ease-out);
+}
+.zoom-img[data-gesturing="true"] { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .zoom-img { transition: none; }
+}
+
+/* Texto legal legible: medida ~70ch, jerarquía clara */
+.legal h3 { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; color: #fff; margin-bottom: 0.75rem; }
+.legal p, .legal li { font-size: 15px; line-height: 1.7; color: var(--color-muted); }
+.legal p + p, .legal p + ul, .legal ul + p { margin-top: 0.75rem; }
+.legal ul { list-style: disc; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
+.legal ul ul { margin-top: 0.4rem; }
+.legal li::marker { color: var(--color-subtle); }
+.legal strong { color: var(--color-ink); font-weight: 600; }
+.legal a { color: var(--color-accent-text); text-decoration: underline; text-underline-offset: 4px; }
+.legal a:hover { color: #fff; }
+
+/* Difuminado de privacidad en directo: inmediato, sin transición */
+.privacy-blur .zoom-img { filter: blur(32px) saturate(0.6); }
+
+/* Paso de revisión antes de enviar (dialog nativo: foco atrapado y Esc incluidos) */
+.review-dialog {
+  color: var(--color-ink);
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+  @starting-style { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+.review-dialog::backdrop {
+  background: rgb(0 0 0 / 0.72);
+  backdrop-filter: blur(3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-dialog { @starting-style { transform: none; } }
+}

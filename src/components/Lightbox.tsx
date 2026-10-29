@@ -1,26 +1,85 @@
 "use client";
 
-import { useEffect } from "react";
-import { X } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import ZoomableImage, { type ZoomHandle } from "./ZoomableImage";
 
-export default function Lightbox({ url, onClose }: { url: string | null; onClose: () => void }) {
+type Props = {
+  url: string | null;
+  onClose: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  caption?: string;
+  /** Difumina la foto (privacidad en directo) */
+  blurred?: boolean;
+};
+
+export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurred = false }: Props) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const zoom = useRef<ZoomHandle>(null);
+  const handlers = useRef({ onClose, onPrev, onNext });
+  handlers.current = { onClose, onPrev, onNext };
+  const isOpen = !!url;
+
   useEffect(() => {
-    if (!url) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [url, onClose]);
+    if (!isOpen) return;
+    const prevFocus = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      const h = handlers.current;
+      if (e.key === "Escape") h.onClose();
+      else if (e.key === "ArrowLeft" && h.onPrev) h.onPrev();
+      else if (e.key === "ArrowRight" && h.onNext) h.onNext();
+      else if (e.key === "+" || e.key === "=") zoom.current?.zoomIn();
+      else if (e.key === "-" || e.key === "_") zoom.current?.zoomOut();
+      else if (e.key === "0") zoom.current?.reset();
+      else return;
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = overflow;
+      prevFocus?.focus();
+    };
+  }, [isOpen]);
 
   if (!url) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4" onClick={onClose}>
-      <button onClick={onClose} aria-label="Close"
-        className="absolute top-6 right-6 text-slate-300 hover:text-white p-2 rounded-xl bg-twitch-card border border-twitch-border z-10">
-        <X className="w-6 h-6" />
+    <div role="dialog" aria-modal="true" aria-label={caption ?? "Photo"} className={`enter-fade fixed inset-0 z-50 bg-black/95 ${blurred ? "privacy-blur" : ""}`}>
+      <ZoomableImage
+        ref={zoom}
+        src={url}
+        alt={caption ?? ""}
+        className="enter-zoom absolute inset-0"
+        imgClassName="max-h-[92vh] max-w-[92vw] rounded-xl object-contain"
+        controlsClassName="bottom-4 left-1/2 -translate-x-1/2"
+        onBackgroundClick={onClose}
+      />
+
+      <button ref={closeRef} onClick={onClose} aria-label="Close"
+        className="pressable absolute top-4 right-4 z-10 flex size-10 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">
+        <X className="size-5" />
       </button>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="" onClick={(e) => e.stopPropagation()}
-        className="max-h-[85vh] max-w-[85vw] object-contain rounded-2xl border border-white/20 shadow-2xl" />
+      {onPrev && (
+        <button onClick={onPrev} aria-label="Previous photo"
+          className="pressable absolute top-1/2 left-4 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">
+          <ChevronLeft className="size-5" />
+        </button>
+      )}
+      {onNext && (
+        <button onClick={onNext} aria-label="Next photo"
+          className="pressable absolute top-1/2 right-4 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">
+          <ChevronRight className="size-5" />
+        </button>
+      )}
+      {caption && (
+        <p className="pointer-events-none absolute top-5 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-medium tabular-nums text-white backdrop-blur-md">
+          {caption}
+        </p>
+      )}
     </div>
   );
 }

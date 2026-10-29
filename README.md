@@ -54,7 +54,7 @@ En los pasos siguientes irás rellenando `.env.local`.
 
 ### 3.1 Crear el proyecto
 1. En <https://supabase.com/dashboard> pulsa **New project**.
-2. Elige un nombre, una contraseña de base de datos fuerte (guárdala) y la región más cercana a tu público (por ejemplo *West EU*).
+2. Elige un nombre, una contraseña de base de datos fuerte (guárdala) y **una región de la Unión Europea**, por ejemplo *Central EU (Frankfurt)*. Mantener los datos en la UE simplifica el cumplimiento del RGPD. Londres y Zúrich no son UE, y la región **no se puede cambiar** después.
 3. Espera a que termine de crearse (1–2 minutos).
 
 ### 3.2 Crear las tablas, la seguridad y el bucket de fotos
@@ -224,7 +224,57 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 
 ---
 
-## 11. Límites del plan gratuito
+## 11. Privacidad y protección de datos (RGPD / LOPDGDD)
+
+> ⚠️ Esto no es asesoramiento legal. El proyecto incluye las piezas técnicas y un texto de política de privacidad pensado para el RGPD europeo y la LOPDGDD española. Si la web va a tener uso comercial, o un volumen grande de participantes, haz que un profesional revise los textos.
+
+### Qué incluye ya la web
+- **Política de privacidad y condiciones de las fotos** en inglés y español: `/privacy`.
+- **Paso de revisión antes de enviar.** Al pulsar *Review and submit* se abre una ventana con la guía de privacidad de las fotos, la información básica sobre protección de datos (primera capa, art. 11 LOPDGDD) y las casillas. **No se envía nada hasta confirmar.** El captcha de Cloudflare solo se carga en ese paso.
+- **Cuatro casillas de consentimiento**, sin marcar y obligatorias, que también se comprueban en el servidor:
+  - tener 18 años o más;
+  - que no aparecen personas, menores ni datos sensibles;
+  - aceptar la emisión pública;
+  - aceptar la política de privacidad.
+- **Registro del consentimiento:** cada entrega guarda la fecha y la versión de la política aceptada (art. 7.1 RGPD).
+- **Avisos detallados** sobre las fotos: personas, nombres, documentos, pantallas, pistas de ubicación, datos sensibles y emisión pública. Junto a la zona de subida hay un aviso breve, y en el paso de revisión, la lista completa.
+- **Derecho de supresión sin cuenta:** al enviar, la persona recibe un **código de borrado** (solo se guarda su hash) que puede usar en `/delete`.
+- **Borrado automático** de las entregas a los 90 días (`retentionDays`), gracias al cron diario.
+- **Avisos al equipo:**
+  - En `/admin`, recordatorio de confidencialidad y **emails ocultos por defecto**, por si la pantalla sale en directo.
+  - En `/streamer`, botón **Blur** (tecla **B**) que difumina la foto al instante si se cuela algo personal.
+- **Solo cookies técnicas** (sesión de moderadores y Turnstile). Por eso no hace falta banner de cookies.
+
+### Lo que tienes que hacer tú antes de publicar
+1. **Rellena `src/config/legal.ts`:**
+   - tu nombre o razón social;
+   - ciudad y país;
+   - un **email de contacto operativo**;
+   - la región de Supabase que elegiste.
+
+   Mientras falten datos, en local aparece un aviso amarillo en el pie de la página.
+2. **Acepta los contratos de encargo de tratamiento (DPA)** de cada proveedor. Los encontrarás en la sección legal de cada uno: Supabase (<https://supabase.com/legal/dpa>), Vercel y Cloudflare. Guarda una copia.
+3. **Crea tu registro de actividades de tratamiento** (art. 30 RGPD). Basta un documento con este contenido:
+   - *Actividad:* selección de habitaciones para emisión en directo.
+   - *Datos:* usuario, email, país, descripción y fotos; IP cifrada con fines de seguridad.
+   - *Base jurídica:* consentimiento, e interés legítimo para la seguridad.
+   - *Destinatarios:* moderadores, público del directo (solo lo aprobado), Supabase, Vercel y Cloudflare.
+   - *Transferencias:* EE. UU. (DPF / cláusulas tipo).
+   - *Plazo:* 90 días.
+   - *Medidas de seguridad:* las del apartado 10.
+4. **Revisa la configuración de tu canal en Twitch.** Decide cuánto tiempo guardas los VODs y si permites clips. Si alguien pide que se borre su habitación, borra también los VODs y clips del canal donde aparezca.
+5. **Atiende las peticiones por email** (acceso, borrado, etc.) en un plazo máximo de **un mes**. Para borrar a mano, usa el botón Delete del panel de admin.
+6. **Revisa cada foto antes de aprobarla**, aunque quien la envía haya confirmado que no hay datos personales. Ante la duda, no la apruebes.
+7. Si cambias la política de privacidad, **sube `policyVersion`** en `legal.ts`. Así sabrás qué versión aceptó cada entrega.
+
+### Cambiar plazos o edad mínima
+En `src/config/legal.ts`:
+- `retentionDays` controla los días de conservación. Se aplica cada noche con el cron.
+- `minAge` es la edad mínima, 18 por defecto. En España se puede consentir desde los 14, y hay un proyecto de ley en el Congreso para subirlo a 16. Exigir 18 evita tratar datos de menores, así que se recomienda no bajarla.
+
+---
+
+## 12. Límites del plan gratuito
 
 Estos límites cambian con el tiempo; revisa las páginas de precios de Supabase y Vercel.
 
@@ -235,7 +285,7 @@ Estos límites cambian con el tiempo; revisa las páginas de precios de Supabase
 
 ---
 
-## 12. Copias de seguridad (recomendado)
+## 13. Copias de seguridad (recomendado)
 
 El plan gratuito de Supabase no incluye copias descargables. Para exportar la base de datos manualmente:
 
@@ -250,7 +300,7 @@ docker run --rm postgres:17 pg_dump "CADENA_DE_CONEXION" --schema=public --data-
 
 ---
 
-## 13. Problemas frecuentes
+## 14. Problemas frecuentes
 
 | Problema | Solución |
 |---|---|
@@ -261,6 +311,7 @@ docker run --rm postgres:17 pg_dump "CADENA_DE_CONEXION" --schema=public --data-
 | Error al subir fotos | Revisa que se ejecutó `schema.sql` (el bucket `room-media` debe existir) y que las claves de Supabase son correctas. |
 | Las imágenes del streamer dejan de verse tras horas abiertas | Las URLs firmadas caducan. La vista se refresca sola cada 30 min; también puedes pulsar el botón ⟳. |
 | Supabase da error tras días sin uso | El proyecto está pausado. Reactívalo desde el dashboard. |
+| Error `function create_submission(...) does not exist` tras actualizar | Vuelve a ejecutar `supabase/schema.sql` completo en el SQL Editor. Añade las columnas de consentimiento sin perder datos. |
 
 ---
 
@@ -273,6 +324,7 @@ src/proxy.ts               Bloquea /admin y /streamer sin sesión
 src/actions/               Lógica de servidor (envío, login, acciones de admin)
 src/lib/                   Sesión, validación, rate limit, Supabase, captcha
 src/components/            Interfaz (formulario, cola admin, vista streamer)
-src/app/                   Páginas: / , /login , /admin , /streamer
+src/app/                   Páginas: / , /login , /admin , /streamer , /privacy , /delete
+src/config/legal.ts        Tus datos legales, plazo de conservación y edad mínima
 vercel.json                Cron diario de limpieza
 ```

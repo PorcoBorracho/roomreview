@@ -30,6 +30,13 @@ create table if not exists public.submissions (
   reviewed_at       timestamptz
 );
 
+-- Privacidad (RGPD art. 7.1: poder demostrar el consentimiento) y derecho de supresión
+alter table public.submissions add column if not exists consent_at timestamptz;
+alter table public.submissions add column if not exists consent_version text;
+alter table public.submissions add column if not exists deletion_token_hash text;
+create unique index if not exists submissions_deletion_token_idx
+  on public.submissions (deletion_token_hash) where deletion_token_hash is not null;
+
 create index if not exists submissions_status_submitted_idx
   on public.submissions (status, submitted_at);
 
@@ -74,6 +81,7 @@ revoke all on table public.rate_limits      from anon, authenticated;
 -- ---------------------------------------------------------------------
 
 -- Crea una entrega y sus fotos en UNA transacción: o se guarda todo o nada.
+drop function if exists public.create_submission(uuid, text, text, text, text, text, jsonb);
 create or replace function public.create_submission(
   p_id uuid,
   p_username text,
@@ -81,7 +89,9 @@ create or replace function public.create_submission(
   p_country text,
   p_description text,
   p_token_hash text,
-  p_media jsonb            -- [{ "path": "...", "position": 0, "content_type": "image/jpeg" }, ...]
+  p_media jsonb,            -- [{ "path": "...", "position": 0, "content_type": "image/jpeg" }, ...]
+  p_consent_version text,
+  p_deletion_hash text
 ) returns uuid
 language plpgsql
 security invoker
@@ -93,9 +103,14 @@ begin
   if v_count < 1 or v_count > 5 then
     raise exception 'invalid media count';
   end if;
+  if p_consent_version is null or p_deletion_hash is null then
+    raise exception 'consent required';
+  end if;
 
-  insert into submissions (id, username, email, country, description, upload_token_hash, media_count)
-  values (p_id, p_username, p_email, p_country, p_description, p_token_hash, v_count);
+  insert into submissions (id, username, email, country, description, upload_token_hash, media_count,
+                           consent_at, consent_version, deletion_token_hash)
+  values (p_id, p_username, p_email, p_country, p_description, p_token_hash, v_count,
+          now(), p_consent_version, p_deletion_hash);
 
   insert into submission_media (submission_id, storage_path, position, content_type)
   select p_id, m->>'path', (m->>'position')::smallint, m->>'content_type'
@@ -133,9 +148,9 @@ begin
   return v_count <= p_limit;
 end $$;
 
-revoke all on function public.create_submission(uuid, text, text, text, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.create_submission(uuid, text, text, text, text, text, jsonb, text, text) from public, anon, authenticated;
 revoke all on function public.rate_limit_hit(text, int, int) from public, anon, authenticated;
-grant execute on function public.create_submission(uuid, text, text, text, text, text, jsonb) to service_role;
+grant execute on function public.create_submission(uuid, text, text, text, text, text, jsonb, text, text) to service_role;
 grant execute on function public.rate_limit_hit(text, int, int) to service_role;
 
 -- ---------------------------------------------------------------------
