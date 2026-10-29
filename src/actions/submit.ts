@@ -1,0 +1,164 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { submissionSchema, uuidSchema, type SubmissionInput } from "@/lib/validation";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { rateLimit } from "@/lib/ratelimit";
+import { clientIp, clientKey } from "@/lib/request";
+import { verifyTurnstile } from "@/lib/turnstile";
+import { randomToken, sha256, safeEqual } from "@/lib/crypto";
+import { BUCKET, MAX_FILE_BYTES } from "@/lib/env";
+import { removeObjects, sniffImageType } from "@/lib/media";
+
+type InitResult =
+  | { ok: true; submissionId: string; finalizeToken: string; uploads: { path: string; token: string }[] }
+  | { ok: false; error: string };
+
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 h para terminar la subida
+
+/** Paso 1: valida, crea la entrega (estado "uploading") y devuelve URLs firmadas de un uso. */
+export async function initSubmission(input: SubmissionInput): Promise<InitResult> {
+  const parsed = submissionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid data" };
+  }
+  const data = parsed.data;
+
+  if (!(await rateLimit(await clientKey("submit"), 5, 3600))) {
+    return { ok: false, error: "Too many submissions from your connection. Please try again later." };
+  }
+  if (!(await rateLimit("submit:global", 300, 3600))) {
+    return { ok: false, error: "The service is busy. Please try again in a few minutes." };
+  }
+  if (!(await verifyTurnstile(data.turnstileToken, await clientIp()))) {
+    return { ok: false, error: "Anti-bot check failed. Reload the page and try again." };
+  }
+
+  const db = supabaseAdmin();
+  const id = randomUUID();
+  const finalizeToken = randomToken();
+  // Nombres de archivo aleatorios: nunca se usa el nombre original del usuario
+  const media = data.files.map((f, i) => ({
+    path: `${id}/${randomUUID()}.${EXT[f.type]}`,
+    position: i,
+    content_type: f.type,
+  }));
+
+  const { error } = await db.rpc("create_submission", {
+    p_id: id,
+    p_username: data.username,
+    p_email: data.email,
+    p_country: data.country,
+    p_description: data.description,
+    p_token_hash: sha256(finalizeToken),
+    p_media: media,
+  });
+  if (error) {
+    console.error("create_submission", error.message);
+    return { ok: false, error: "Could not create the submission. Please try again." };
+  }
+
+  const uploads: { path: string; token: string }[] = [];
+  for (const m of media) {
+    const { data: signed, error: signErr } = await db.storage.from(BUCKET).createSignedUploadUrl(m.path);
+    if (signErr || !signed) {
+      console.error("createSignedUploadUrl", signErr?.message);
+      await db.from("submissions").delete().eq("id", id);
+      return { ok: false, error: "Could not prepare the upload. Please try again." };
+    }
+    uploads.push({ path: signed.path, token: signed.token });
+  }
+
+  return { ok: true, submissionId: id, finalizeToken, uploads };
+}
+
+type FinalizeResult = { ok: true } | { ok: false; error: string };
+
+/** Paso 2: comprueba en el servidor que los archivos subidos son imágenes válidas y publica la entrega como "pending". */
+export async function finalizeSubmission(submissionId: string, finalizeToken: string): Promise<FinalizeResult> {
+  if (!uuidSchema.safeParse(submissionId).success || typeof finalizeToken !== "string" || finalizeToken.length > 100) {
+    return { ok: false, error: "Invalid request" };
+  }
+  if (!(await rateLimit(await clientKey("finalize"), 20, 3600))) {
+    return { ok: false, error: "Too many requests. Please try again later." };
+  }
+
+  const db = supabaseAdmin();
+  const { data: sub } = await db
+    .from("submissions")
+    .select("id, status, upload_token_hash, created_at, media_count")
+    .eq("id", submissionId)
+    .maybeSingle();
+
+  const tokenHash = sha256(finalizeToken);
+  if (!sub || sub.status !== "uploading" || !sub.upload_token_hash || !safeEqual(sub.upload_token_hash, tokenHash)) {
+    return { ok: false, error: "Submission not found or already sent" };
+  }
+  if (Date.now() - new Date(sub.created_at).getTime() > UPLOAD_WINDOW_MS) {
+    await discard(submissionId);
+    return { ok: false, error: "The upload expired. Please try again." };
+  }
+
+  const { data: mediaRows } = await db
+    .from("submission_media")
+    .select("storage_path, content_type")
+    .eq("submission_id", submissionId);
+
+  const problem = await validateUploadedFiles(submissionId, mediaRows ?? [], sub.media_count);
+  if (problem) {
+    await discard(submissionId);
+    return { ok: false, error: problem };
+  }
+
+  // Transición atómica: solo una petición puede pasar de "uploading" a "pending"
+  const { data: updated, error } = await db
+    .from("submissions")
+    .update({ status: "pending", submitted_at: new Date().toISOString(), upload_token_hash: null })
+    .eq("id", submissionId)
+    .eq("status", "uploading")
+    .eq("upload_token_hash", tokenHash)
+    .select("id");
+
+  if (error || !updated || updated.length !== 1) {
+    return { ok: false, error: "This submission was already sent" };
+  }
+  return { ok: true };
+}
+
+async function validateUploadedFiles(
+  submissionId: string,
+  rows: { storage_path: string; content_type: string }[],
+  expected: number,
+): Promise<string | null> {
+  if (rows.length !== expected) return "Some photos are missing";
+  const storage = supabaseAdmin().storage.from(BUCKET);
+
+  const { data: listed, error } = await storage.list(submissionId, { limit: 20 });
+  if (error) return "Could not verify the photos";
+  const byName = new Map((listed ?? []).map((o) => [`${submissionId}/${o.name}`, o]));
+  if (byName.size !== expected) return "The photos were not uploaded correctly";
+
+  for (const row of rows) {
+    const obj = byName.get(row.storage_path);
+    const size = Number((obj?.metadata as { size?: number } | null)?.size ?? 0);
+    if (!obj || size <= 0 || size > MAX_FILE_BYTES) return "A photo is invalid or too large";
+
+    // Leer solo los primeros bytes para comprobar que de verdad es una imagen
+    const { data: signed } = await storage.createSignedUrl(row.storage_path, 60);
+    if (!signed?.signedUrl) return "Could not verify the photos";
+    const res = await fetch(signed.signedUrl, { headers: { Range: "bytes=0-15" }, cache: "no-store" });
+    if (!res.ok) return "Could not verify the photos";
+    const head = new Uint8Array(await res.arrayBuffer()).slice(0, 16);
+    const real = sniffImageType(head);
+    if (!real || real !== row.content_type) return "Only JPEG, PNG or WebP images are accepted";
+  }
+  return null;
+}
+
+async function discard(submissionId: string) {
+  const db = supabaseAdmin();
+  const { data } = await db.storage.from(BUCKET).list(submissionId, { limit: 50 });
+  await removeObjects((data ?? []).map((o) => `${submissionId}/${o.name}`));
+  await db.from("submissions").delete().eq("id", submissionId).eq("status", "uploading");
+}

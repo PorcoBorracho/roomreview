@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-twitch-purple: #9146ff;
+  --color-twitch-dark: #0e0e10;
+  --color-twitch-card: #18181b;
+  --color-twitch-border: #2f2f35;
+  --color-twitch-neon: #a970ff;
+
+  --color-cyber-pink: #ff2a85;
+  --color-cyber-cyan: #00f0ff;
+  --color-cyber-green: #00ff66;
+  --color-cyber-yellow: #ffe600;
+
+  --font-sans: "Inter Variable", "Inter", sans-serif;
+  --font-mono: "Fira Code", "JetBrains Mono", monospace;
+}
+
+body {
+  background-color: #08080c;
+  color: #efeff1;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0e0e10; }
+::-webkit-scrollbar-thumb { background: #2f2f35; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #9146ff; }
+
+.glow-purple { box-shadow: 0 0 20px rgba(145, 70, 255, 0.3); }
