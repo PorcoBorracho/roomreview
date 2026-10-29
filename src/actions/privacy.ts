@@ -31,7 +31,6 @@ export async function deleteOwnSubmission(_prev: DeleteState, formData: FormData
     const { data: files } = await db.storage.from(BUCKET).list(r.id, { limit: 50 });
     await removeObjects((files ?? []).map((f) => `${r.id}/${f.name}`));
   }
-  revalidatePath("/admin");
-  revalidatePath("/streamer");
+  revalidatePath("/", "layout");
   return { ok: true };
 }

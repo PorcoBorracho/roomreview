@@ -1,5 +1,7 @@
-import { requirePageRole } from "@/lib/session";
+import { notFound } from "next/navigation";
+import { requireBoardPage } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getBoardBySlug } from "@/lib/boards";
 import { signPaths } from "@/lib/media";
 import StreamerDeck from "@/components/StreamerDeck";
 import type { DeckSubmission } from "@/lib/types";
@@ -11,13 +13,17 @@ type Row = {
   submission_media: { id: string; storage_path: string; position: number }[];
 };
 
-export default async function StreamerPage() {
-  await requirePageRole("viewer", "/streamer");
+export default async function DeckPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const board = await getBoardBySlug(slug);
+  if (!board) notFound();
+  await requireBoardPage(board.id, `/${slug}/deck`);
 
   // Nunca se envía el email al navegador en esta vista
   const { data, error } = await supabaseAdmin()
     .from("submissions")
     .select("id, username, country, description, submitted_at, submission_media(id, storage_path, position)")
+    .eq("board_id", board.id)
     .eq("status", "approved")
     .order("submitted_at", { ascending: true })
     .limit(500);

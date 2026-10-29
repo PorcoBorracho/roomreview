@@ -10,7 +10,6 @@ export const serverEnv = {
   get supabaseUrl() { return req("NEXT_PUBLIC_SUPABASE_URL"); },
   get supabaseSecretKey() { return req("SUPABASE_SECRET_KEY"); },
   get adminPasswordHash() { return req("ADMIN_PASSWORD_HASH"); },
-  get viewerPasswordHash() { return req("VIEWER_PASSWORD_HASH"); },
   get sessionSecret() {
     const s = req("SESSION_SECRET");
     if (s.length < 32) throw new Error("SESSION_SECRET debe tener al menos 32 caracteres");

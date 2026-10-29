@@ -50,6 +50,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
 
   const { error } = await db.rpc("create_submission", {
     p_id: id,
+    p_board_id: data.boardId,
     p_username: data.username,
     p_email: data.email,
     p_country: data.country,
@@ -60,6 +61,9 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
     p_deletion_hash: deletion.hash,
   });
   if (error) {
+    if (error.hint === "BOARD_CLOSED" || error.message?.includes("board closed")) {
+      return { ok: false, error: "This board isn't accepting submissions right now." };
+    }
     console.error("create_submission", error.message);
     return { ok: false, error: "Could not create the submission. Please try again." };
   }

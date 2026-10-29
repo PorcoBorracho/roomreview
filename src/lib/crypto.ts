@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { serverEnv } from "./env";
 
 export function sha256(input: string): string {
@@ -40,4 +40,43 @@ export async function verifyPassword(password: string, stored: string): Promise<
     N, r, p, maxmem: 128 * N * r * 2,
   });
   return key.length === expected.length && timingSafeEqual(key, expected);
+}
+
+const SCRYPT = { N: 2 ** 15, r: 8, p: 1, keyLen: 64 };
+
+/** Hash "scrypt:N:r:p:salt:key" (mismo formato que scripts/hash-password.mjs). */
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const key = await scryptAsync(password.normalize("NFKC"), salt, SCRYPT.keyLen, {
+    N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, maxmem: 128 * SCRYPT.N * SCRYPT.r * 2,
+  });
+  return `scrypt:${SCRYPT.N}:${SCRYPT.r}:${SCRYPT.p}:${salt.toString("base64url")}:${key.toString("base64url")}`;
+}
+
+/**
+ * Cifrado reversible para las contraseñas de board (solo para poder copiarlas desde el panel).
+ * Clave derivada de SESSION_SECRET con HKDF: si cambias SESSION_SECRET, las contraseñas
+ * siguen funcionando para entrar (se comprueban con el hash), pero ya no se podrán copiar.
+ */
+function boardKey(): Buffer {
+  return Buffer.from(hkdfSync("sha256", serverEnv.sessionSecret, "room-review", "board-password-v1", 32));
+}
+
+export function encryptSecret(plain: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", boardKey(), iv);
+  const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return `v1:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${data.toString("base64url")}`;
+}
+
+export function decryptSecret(stored: string): string | null {
+  try {
+    const [v, iv, tag, data] = stored.split(":");
+    if (v !== "v1" || !iv || !tag || !data) return null;
+    const d = createDecipheriv("aes-256-gcm", boardKey(), Buffer.from(iv, "base64url"));
+    d.setAuthTag(Buffer.from(tag, "base64url"));
+    return Buffer.concat([d.update(Buffer.from(data, "base64url")), d.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
 }

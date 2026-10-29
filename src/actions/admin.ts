@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { uuidSchema } from "@/lib/validation";
-import { requireRole } from "@/lib/session";
+import { requireAdmin } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { removeObjects } from "@/lib/media";
 
@@ -10,7 +10,7 @@ type Result = { ok: true } | { ok: false; error: string };
 
 async function guard(id: string): Promise<Result | null> {
   try {
-    await requireRole("admin");
+    await requireAdmin();
   } catch {
     return { ok: false, error: "Unauthorized" };
   }
@@ -28,8 +28,7 @@ async function transition(id: string, from: "pending" | "approved", to: "pending
     .select("id");
   if (error) return { ok: false, error: "Database error" };
   if (!data || data.length === 0) return { ok: false, error: "Another admin already changed this submission. The list has been refreshed." };
-  revalidatePath("/admin");
-  revalidatePath("/streamer");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -58,7 +57,6 @@ export async function deleteSubmission(id: string): Promise<Result> {
   if (!deleted || deleted.length === 0) return { ok: false, error: "This submission no longer exists" };
 
   await removeObjects((media ?? []).map((m) => m.storage_path));
-  revalidatePath("/admin");
-  revalidatePath("/streamer");
+  revalidatePath("/", "layout");
   return { ok: true };
 }

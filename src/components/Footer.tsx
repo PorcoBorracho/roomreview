@@ -9,12 +9,12 @@ export default function Footer() {
           Setup: fill in your controller details in <code className="font-mono">src/config/legal.ts</code> before going live.
         </p>
       )}
-      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-[13px] text-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+      <div className="shell flex flex-col gap-3 py-6 text-[13px] text-subtle sm:flex-row sm:items-center sm:justify-between">
         <p>{LEGAL.projectName}. Photos are deleted after {LEGAL.retentionDays} days.</p>
         <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
           <Link href="/privacy" className="hover:text-white">Privacy & photo terms</Link>
           <Link href="/delete" className="hover:text-white">Delete my submission</Link>
-          <a href={`mailto:${LEGAL.contactEmail}`} className="hover:text-white">Contact</a>
+          <Link href="/contact" className="hover:text-white">Contact</Link>
         </nav>
       </div>
     </footer>

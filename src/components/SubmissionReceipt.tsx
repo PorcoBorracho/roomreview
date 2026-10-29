@@ -20,7 +20,7 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
   function download() {
     const text = `${LEGAL.projectName}\n\nYour deletion code: ${code}\n\nTo delete your submission at any time, go to ${location.origin}/delete and enter this code.\nSubmissions are deleted automatically after ${LEGAL.retentionDays} days.\n`;
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: "room-review-deletion-code.txt" });
+    const a = Object.assign(document.createElement("a"), { href: url, download: "deletion-code.txt" });
     a.click();
     URL.revokeObjectURL(url);
     setSaved(true);
@@ -64,15 +64,15 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
         <p className="mt-3 text-[13px] text-muted">
           Use it on the{" "}
           <Link href="/delete" className="font-medium text-accent-text underline underline-offset-4">delete my submission</Link>{" "}
-          page. Without it, email{" "}
-          <a href={`mailto:${LEGAL.contactEmail}`} className="font-medium text-accent-text underline underline-offset-4">{LEGAL.contactEmail}</a>.
+          page. Without it, use the{" "}
+          <Link href="/contact" className="font-medium text-accent-text underline underline-offset-4">contact page</Link>.
           Submissions are deleted automatically after {LEGAL.retentionDays} days.
         </p>
       </div>
 
       <button type="button" onClick={onDone}
         className="pressable flex h-11 w-full items-center justify-center rounded-xl border border-line text-sm font-semibold text-muted hover:border-line-strong hover:text-white">
-        I&apos;ve saved my code, submit another room
+        I&apos;ve saved my code, submit another
       </button>
     </div>
   );

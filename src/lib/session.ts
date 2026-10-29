@@ -5,28 +5,45 @@ import { SignJWT, jwtVerify } from "jose";
 import { serverEnv } from "./env";
 import { sha256 } from "./crypto";
 
-export type Role = "admin" | "viewer";
+/**
+ * admin: todo el panel.
+ * streamer: solo el deck (y la página pública) de los boards cuya contraseña ha introducido.
+ */
+export type Session = { role: "admin" } | { role: "streamer"; boards: string[] };
+export type Role = Session["role"];
+
 export const SESSION_COOKIE = "__Host-rr_session";
 const DEV_COOKIE = "rr_session";
 const SESSION_HOURS = 12;
+const MAX_BOARDS = 20;
 
 function cookieName() {
   // __Host- exige HTTPS; en localhost (http) usamos un nombre normal
   return process.env.NODE_ENV === "production" ? SESSION_COOKIE : DEV_COOKIE;
 }
 
+const cookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict" as const,
+  path: "/",
+});
+
 function key() {
   return new TextEncoder().encode(serverEnv.sessionSecret);
 }
 
-/** Huella del hash de contraseña: si cambias la contraseña, las sesiones antiguas dejan de valer. */
-function passwordVersion(role: Role) {
-  const h = role === "admin" ? serverEnv.adminPasswordHash : serverEnv.viewerPasswordHash;
-  return sha256(h).slice(0, 16);
+/** Huella del hash de admin: si cambias la contraseña de admin, sus sesiones dejan de valer. */
+function adminVersion() {
+  return sha256(serverEnv.adminPasswordHash).slice(0, 16);
 }
 
-export async function createSession(role: Role) {
-  const token = await new SignJWT({ role, pv: passwordVersion(role) })
+export async function createSession(session: Session) {
+  const claims =
+    session.role === "admin"
+      ? { role: "admin", pv: adminVersion() }
+      : { role: "streamer", boards: [...new Set(session.boards)].slice(-MAX_BOARDS) };
+  const token = await new SignJWT(claims)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_HOURS}h`)
@@ -34,28 +51,15 @@ export async function createSession(role: Role) {
     .setIssuer("room-review")
     .sign(key());
 
-  (await cookies()).set(cookieName(), token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: SESSION_HOURS * 3600,
-  });
+  (await cookies()).set(cookieName(), token, { ...cookieOptions(), maxAge: SESSION_HOURS * 3600 });
 }
 
 export async function destroySession() {
   // Las cookies __Host- solo se pueden sobrescribir con los mismos atributos (Secure, Path=/)
-  (await cookies()).set(cookieName(), "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: 0,
-    expires: new Date(0),
-  });
+  (await cookies()).set(cookieName(), "", { ...cookieOptions(), maxAge: 0, expires: new Date(0) });
 }
 
-export async function getSession(): Promise<{ role: Role } | null> {
+export async function getSession(): Promise<Session | null> {
   const token = (await cookies()).get(cookieName())?.value;
   if (!token) return null;
   try {
@@ -64,32 +68,46 @@ export async function getSession(): Promise<{ role: Role } | null> {
       audience: "room-review",
       issuer: "room-review",
     });
-    const role = payload.role;
-    if (role !== "admin" && role !== "viewer") return null;
-    if (payload.pv !== passwordVersion(role)) return null;
-    return { role };
+    if (payload.role === "admin") return payload.pv === adminVersion() ? { role: "admin" } : null;
+    if (payload.role === "streamer" && Array.isArray(payload.boards)) {
+      const boards = payload.boards.filter((b): b is string => typeof b === "string").slice(0, MAX_BOARDS);
+      return { role: "streamer", boards };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-/** admin puede todo; viewer solo visualizar. */
-export function hasAccess(role: Role, needed: Role) {
-  return needed === "viewer" ? role === "viewer" || role === "admin" : role === "admin";
+export const isAdmin = (s: Session | null): s is { role: "admin" } => s?.role === "admin";
+
+/** ¿Puede esta sesión ver el deck de este board? */
+export function canViewBoard(s: Session | null, boardId: string): boolean {
+  if (!s) return false;
+  return s.role === "admin" || s.boards.includes(boardId);
 }
 
-/** Para páginas: redirige al login si no hay permiso. */
-export async function requirePageRole(needed: Role, nextPath: string) {
+function loginUrl(nextPath: string) {
+  return nextPath === "/" ? "/login" : `/login?next=${encodeURIComponent(nextPath)}`;
+}
+
+/** Para páginas de admin: redirige al login si no hay permiso. */
+export async function requireAdminPage(nextPath: string) {
   const s = await getSession();
-  if (!s || !hasAccess(s.role, needed)) {
-    redirect(`/login?role=${needed}&next=${encodeURIComponent(nextPath)}`);
-  }
+  if (!isAdmin(s)) redirect(loginUrl(nextPath));
   return s;
 }
 
-/** Para server actions / API: lanza error si no hay permiso. */
-export async function requireRole(needed: Role) {
+/** Para el deck: admin o streamer con acceso a ese board. */
+export async function requireBoardPage(boardId: string, nextPath: string) {
   const s = await getSession();
-  if (!s || !hasAccess(s.role, needed)) throw new Error("UNAUTHORIZED");
+  if (!canViewBoard(s, boardId)) redirect(loginUrl(nextPath));
+  return s as Session;
+}
+
+/** Para server actions / API: lanza error si no es admin. */
+export async function requireAdmin() {
+  const s = await getSession();
+  if (!isAdmin(s)) throw new Error("UNAUTHORIZED");
   return s;
 }

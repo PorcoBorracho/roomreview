@@ -7,6 +7,7 @@ import { approveSubmission, deleteSubmission, unapproveSubmission } from "@/acti
 import type { AdminSubmission } from "@/lib/types";
 import Lightbox from "./Lightbox";
 import HoldButton from "./HoldButton";
+import Segmented from "./Segmented";
 
 type Status = "pending" | "approved" | "all";
 type Props = {
@@ -77,7 +78,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
     <section>
       <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Admin queue</h2>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Queue</h1>
           <p className="mt-1 text-sm text-muted">
             <span className="tabular-nums">{filtered}</span> {status === "all" ? "shown" : status}
             <span className="mx-1.5 text-subtle">·</span>
@@ -86,16 +87,12 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div role="tablist" aria-label="Filter by status" className="flex rounded-xl border border-line bg-well p-1">
-            {TABS.map((t) => (
-              <button key={t.value} role="tab" aria-selected={status === t.value}
-                onClick={() => status !== t.value && go({ status: t.value, page: 1 })}
-                className={`pressable h-8 flex-1 rounded-lg px-3.5 text-[13px] font-semibold sm:flex-none ${
-                  status === t.value ? "bg-raised text-white shadow-raised" : "text-muted hover:text-white"}`}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            ariaLabel="Filter by status"
+            items={TABS.map((t) => ({ key: t.value, label: t.label }))}
+            active={status}
+            onSelect={(k) => go({ status: k as Status, page: 1 })}
+          />
           <div className="relative sm:w-72">
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-hint" />
             <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={60}
@@ -140,12 +137,12 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
           </h3>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
             {q ? `No submissions match "${q}". Try a different username or country.`
-              : status === "pending" ? "New room submissions will show up here for review."
+              : status === "pending" ? "New submissions will show up here for review."
               : "Approved submissions will appear here."}
           </p>
         </div>
       ) : (
-        <ol className="mt-6 space-y-3">
+        <ol className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(min(100%,38rem),1fr))] items-start gap-4">
           {submissions.map((sub, index) => {
             const approved = sub.status === "approved";
             const isBusy = busy?.id === sub.id;
@@ -158,7 +155,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                       <span className="text-sm tabular-nums text-subtle">#{offset + index + 1}</span>
-                      <h3 className="max-w-full truncate font-mono text-base font-semibold text-white">@{sub.username}</h3>
+                      <h2 className="max-w-full truncate text-base font-semibold text-white">@{sub.username}</h2>
                       <span className="text-sm text-muted">{sub.country}</span>
                       {status === "all" && (
                         <span className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${
@@ -210,7 +207,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
                 </p>
 
                 {sub.media.length > 0 && (
-                  <ul className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-6" aria-label={`${sub.media.length} photos`}>
+                  <ul className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-2" aria-label={`${sub.media.length} photos`}>
                     {sub.media.map((m, i) => (
                       <li key={m.id}>
                         <button type="button" onClick={() => setViewer({ subId: sub.id, index: i })}

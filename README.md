@@ -1,12 +1,16 @@
-# Room Review: Next.js + Supabase
+# Reviews: Next.js + Supabase
 
-Web para que cualquier persona envíe fotos de su habitación, con un panel de administración y una vista para el streamer, ambos protegidos por contraseña. Todo funciona con planes gratuitos: Vercel Hobby, Supabase Free y Cloudflare Turnstile.
+Web para recibir fotos de la comunidad en varios **boards** (salas), cada uno con su propósito (Room Review, Costume Review, Pet Review, Christmas Decorations…) y **su propio streamer**, así que la misma web sirve para varios canales. Cada board tiene su propia URL pública, su cola de moderación y su vista para el streamer. Todo funciona con planes gratuitos: Vercel Hobby, Supabase Free y Cloudflare Turnstile.
 
 | Ruta | Quién entra | Qué puede hacer |
 |---|---|---|
-| `/` | Cualquiera (invitado) | Enviar una entrega con hasta 5 fotos |
-| `/admin` | Contraseña de **admin** | Ver, aprobar, devolver a pendiente y borrar entregas, y ver los emails |
-| `/streamer` | Contraseña de **viewer** (o de admin) | Ver las entregas aprobadas, sin emails |
+| `/` | Solo **admin** | **Panel de control**: crear, editar, activar o desactivar, abrir o cerrar y borrar boards, y copiar el acceso de cada streamer |
+| `/{board}` (p. ej. `/pet-review`) | Cualquiera (invitado) | Enviar una entrega con hasta 5 fotos a ese board |
+| `/{board}/queue` | Solo **admin** | Ver, aprobar, devolver a pendiente y borrar las entregas de ese board |
+| `/{board}/deck` | Admin, o el **streamer de ese board** con su contraseña | Mostrar en directo las entregas aprobadas, sin emails |
+| `/privacy`, `/delete`, `/contact` | Cualquiera | Política de privacidad, borrado de la propia entrega con su código y contacto |
+
+Toda la web está en inglés. Este README está en español.
 
 ---
 
@@ -92,22 +96,27 @@ Para desarrollo local, `.env.example` ya incluye las **claves de prueba** oficia
 
 ---
 
-## 5. Crear las contraseñas de admin y viewer
+## 5. Crear la contraseña de admin
 
-Las contraseñas **no se guardan en texto plano**, solo su hash (scrypt). Genera cada una con:
+La contraseña **no se guarda en texto plano**, solo su hash (scrypt). Genérala con:
 
 ```bash
 npm run hash-password
 ```
 
-Escribe la contraseña (no se mostrará en pantalla) y copia el resultado, que empieza por `scrypt:`:
-
-- Hash de la contraseña de admin → `ADMIN_PASSWORD_HASH`
-- Hash de la contraseña de streamer → `VIEWER_PASSWORD_HASH`
+Escribe la contraseña (no se mostrará en pantalla) y copia el resultado, que empieza por `scrypt:`, en `ADMIN_PASSWORD_HASH`.
 
 Recomendaciones:
-- Mínimo **16 caracteres** y distintas entre sí. Usa un gestor de contraseñas.
-- **Cambiar una contraseña cierra automáticamente** todas las sesiones abiertas con ella.
+- Mínimo **16 caracteres**. Usa un gestor de contraseñas.
+- **Cambiar la contraseña cierra automáticamente** todas las sesiones de admin abiertas.
+
+### Contraseñas de streamer (una por board)
+No van en las variables de entorno: se ponen en el panel **al crear cada board**, y son obligatorias. El panel propone una aleatoria con el botón *Generate*.
+- **No se pueden cambiar**, solo copiar. En cada tarjeta del panel, *Streamer access* tiene dos botones: **Deck link** y **Password**. Envía las dos cosas al streamer por un canal privado.
+- El streamer abre el enlace del deck, escribe su contraseña y solo ve **ese** board: el deck y la página pública. No puede entrar en el panel, en las colas ni en los decks de otros boards. Si tiene contraseñas de varios boards, la sesión los recuerda todos.
+- Se guardan de dos formas: un **hash** para comprobar el login y una **copia cifrada** (AES-256-GCM, con clave derivada de `SESSION_SECRET`) para poder copiarlas. Si algún día cambias `SESSION_SECRET`, las contraseñas siguen sirviendo para entrar, pero el botón de copiar dejará de funcionar.
+- Los boards creados antes de esta versión no tienen contraseña: el panel muestra **Set password**. Se puede poner una sola vez.
+- Si necesitas otra contraseña para un streamer, crea un board nuevo y borra el antiguo.
 
 ---
 
@@ -130,12 +139,26 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 npm run dev
 ```
 
-Abre <http://localhost:3000> y comprueba:
-1. Envía una entrega con 1–5 fotos y verás el aviso *Submission Received!*
-2. Entra en **Admin Queue** con la contraseña de admin y aprueba la entrega.
-3. Entra en **Streamer View** y la entrega aprobada aparecerá ahí.
+Comprueba lo siguiente:
+1. Abre <http://localhost:3000>: te pedirá contraseña. Entra con la de admin y verás el **panel de control** con el board *Room Review*. Lo crea `schema.sql` y contiene las entregas que ya tuvieras.
+2. Pulsa **New board** y crea, por ejemplo, *Pet Review*, con su streamer y su contraseña. Su dirección será <http://localhost:3000/pet-review>.
+3. Abre esa dirección en una ventana privada (como haría un invitado) y envía una entrega. Al pulsar *Review and submit* aparecen los avisos y las casillas.
+4. En el panel, pulsa **Queue** en ese board y aprueba la entrega.
+5. Pulsa **Deck**: la entrega aprobada aparece lista para el directo.
+6. En otra ventana privada, abre <http://localhost:3000/pet-review/deck> y entra con la contraseña de streamer de ese board. Es lo que verá el streamer.
 
-Atajos de teclado en la vista streamer: **← →** cambian de foto, **↑ ↓** cambian de entrega y **F** abre la pantalla completa.
+Atajos de teclado en el deck: **← →** cambian de foto, **↑ ↓** cambian de entrega, **+ / −** zoom, **B** difumina y **F** abre la pantalla completa.
+
+### Gestionar boards
+- **Streamer y plataforma** (obligatorios al crear un board): el nombre del canal y dónde emite (Twitch, YouTube, Kick, TikTok u otra). Aparecen en la página pública y en la casilla de consentimiento, por ejemplo: *"…may be shown live on PixelWitch's YouTube streams"*. Por eso es importante que sean correctos. La dirección se sugiere automáticamente a partir del streamer y el título (`pixelwitch-costume-review`). Con varios streamers, el panel muestra un filtro **All streamers**.
+- Los boards creados antes de esta versión no tienen streamer: el panel los marca con *No streamer set*. Edítalos y añádelo.
+- **Active:** si está apagado, la página pública da error 404. Tú sigues viéndola desde el panel para prepararla.
+- **Accepting submissions:** si está apagado, la página se ve, pero muestra *Submissions are closed*. El servidor también rechaza los envíos, aunque alguien tuviera el formulario abierto.
+- **People may appear in photos:** actívalo en boards donde salgan personas, como disfraces. Cambia los avisos y la casilla de consentimiento: quien sale tiene que ser quien envía o haber dado permiso, y **nunca menores**. Revisa esas fotos con especial cuidado.
+- **Edit:** título, descripción, dirección y opciones. Si cambias la dirección, los enlaces antiguos dejan de funcionar. Si otro admin guardó cambios mientras editabas, se te avisa en lugar de sobrescribirlos.
+- **Delete** (mantener pulsado): borra el board con **todas** sus entregas y fotos.
+
+Algunas direcciones están reservadas y no se pueden usar: `login`, `privacy`, `delete`, `api`, `admin`, `streamer`, `queue`, `deck`…
 
 ---
 
@@ -171,7 +194,6 @@ git push -u origin main
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable / anon key |
    | `SUPABASE_SECRET_KEY` | Secret / service_role key |
    | `ADMIN_PASSWORD_HASH` | `scrypt:…` |
-   | `VIEWER_PASSWORD_HASH` | `scrypt:…` |
    | `SESSION_SECRET` | Cadena aleatoria |
    | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Tu Site Key real (no la de prueba) |
    | `TURNSTILE_SECRET_KEY` | Tu Secret Key real |
@@ -192,7 +214,7 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 - **Invitados:** solo pueden *crear* entregas. No pueden leer, editar ni borrar nada, ni siquiera lo que acaban de subir.
 - Las contraseñas se comprueban **en el servidor** con scrypt en tiempo constante. Nunca viajan al navegador ni están en el código.
 - La sesión es una cookie `__Host-` firmada (JWT HS256) con las opciones `HttpOnly`, `Secure` y `SameSite=Strict`. Caduca a las 12 h.
-- **Doble control de acceso:** el *proxy* de Next.js bloquea `/admin` y `/streamer`, y además **cada página y cada acción** vuelve a comprobar el rol en el servidor.
+- **Doble control de acceso:** el *proxy* de Next.js bloquea el panel (`/`), las colas y los decks, y además **cada página y cada acción** vuelve a comprobar el rol en el servidor.
 - La vista streamer **nunca recibe los emails**.
 
 **Base de datos y fotos**
@@ -220,7 +242,7 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 - Cada envío es una fila independiente, así que dos usuarios a la vez nunca se pisan. El sistema antiguo, en cambio, reescribía un JSON entero en cada envío.
 - Aprobar, devolver a pendiente y borrar son **operaciones condicionales**. Si dos admins actúan a la vez sobre la misma entrega, solo una acción se aplica y el otro admin recibe un aviso.
 
-**Cabeceras HTTP:** CSP estricta, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy`. Además, `/admin`, `/streamer` y `/login` se sirven sin caché y con `noindex`.
+**Cabeceras HTTP:** CSP estricta, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy`. Además, el panel, las colas, los decks y `/login` se sirven sin caché y con `noindex`.
 
 ---
 
@@ -229,6 +251,7 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 > ⚠️ Esto no es asesoramiento legal. El proyecto incluye las piezas técnicas y un texto de política de privacidad pensado para el RGPD europeo y la LOPDGDD española. Si la web va a tener uso comercial, o un volumen grande de participantes, haz que un profesional revise los textos.
 
 ### Qué incluye ya la web
+- Todo lo de abajo se aplica a **todos los boards**. En los boards con *People may appear in photos* activado, los avisos y la casilla de terceros se adaptan automáticamente.
 - **Política de privacidad y condiciones de las fotos** en inglés y español: `/privacy`.
 - **Paso de revisión antes de enviar.** Al pulsar *Review and submit* se abre una ventana con la guía de privacidad de las fotos, la información básica sobre protección de datos (primera capa, art. 11 LOPDGDD) y las casillas. **No se envía nada hasta confirmar.** El captcha de Cloudflare solo se carga en ese paso.
 - **Cuatro casillas de consentimiento**, sin marcar y obligatorias, que también se comprueban en el servidor:
@@ -241,12 +264,12 @@ La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` a
 - **Derecho de supresión sin cuenta:** al enviar, la persona recibe un **código de borrado** (solo se guarda su hash) que puede usar en `/delete`.
 - **Borrado automático** de las entregas a los 90 días (`retentionDays`), gracias al cron diario.
 - **Avisos al equipo:**
-  - En `/admin`, recordatorio de confidencialidad y **emails ocultos por defecto**, por si la pantalla sale en directo.
-  - En `/streamer`, botón **Blur** (tecla **B**) que difumina la foto al instante si se cuela algo personal.
+  - En cada cola, recordatorio de confidencialidad y **emails ocultos por defecto**, por si la pantalla sale en directo.
+  - En cada deck, botón **Blur** (tecla **B**) que difumina la foto al instante si se cuela algo personal.
 - **Solo cookies técnicas** (sesión de moderadores y Turnstile). Por eso no hace falta banner de cookies.
 
 ### Lo que tienes que hacer tú antes de publicar
-1. **Rellena `src/config/legal.ts`:**
+1. **Rellena `src/config/legal.ts`.** `projectName` es el nombre general de la web que sale en la cabecera (por defecto *Stream Reviews*). Además:
    - tu nombre o razón social;
    - ciudad y país;
    - un **email de contacto operativo**;
@@ -311,6 +334,7 @@ docker run --rm postgres:17 pg_dump "CADENA_DE_CONEXION" --schema=public --data-
 | Error al subir fotos | Revisa que se ejecutó `schema.sql` (el bucket `room-media` debe existir) y que las claves de Supabase son correctas. |
 | Las imágenes del streamer dejan de verse tras horas abiertas | Las URLs firmadas caducan. La vista se refresca sola cada 30 min; también puedes pulsar el botón ⟳. |
 | Supabase da error tras días sin uso | El proyecto está pausado. Reactívalo desde el dashboard. |
+| La página de un board da 404 | El board está desactivado (actívalo en el panel) o la dirección no coincide. |
 | Error `function create_submission(...) does not exist` tras actualizar | Vuelve a ejecutar `supabase/schema.sql` completo en el SQL Editor. Añade las columnas de consentimiento sin perder datos. |
 
 ---
@@ -320,11 +344,13 @@ docker run --rm postgres:17 pg_dump "CADENA_DE_CONEXION" --schema=public --data-
 ```
 supabase/schema.sql        Tablas, RLS, funciones atómicas y bucket privado
 scripts/hash-password.mjs  Genera los hashes de las contraseñas
-src/proxy.ts               Bloquea /admin y /streamer sin sesión
+src/proxy.ts               Bloquea el panel, las colas y los decks sin sesión
 src/actions/               Lógica de servidor (envío, login, acciones de admin)
 src/lib/                   Sesión, validación, rate limit, Supabase, captcha
 src/components/            Interfaz (formulario, cola admin, vista streamer)
-src/app/                   Páginas: / , /login , /admin , /streamer , /privacy , /delete
+src/app/page.tsx           Panel de control (/)
+src/app/[slug]/            Página pública, queue y deck de cada board
+src/app/                   Además: /login , /privacy , /delete
 src/config/legal.ts        Tus datos legales, plazo de conservación y edad mínima
 vercel.json                Cron diario de limpieza
 ```

@@ -9,6 +9,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import Turnstile from "./Turnstile";
 import SubmissionReceipt from "./SubmissionReceipt";
 import { LEGAL } from "@/config/legal";
+import { streamPhrase, type Platform } from "@/lib/platforms";
 
 const MAX_FILES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -20,7 +21,9 @@ type Progress = { label: string; done: number; total: number };
 type Consents = { age: boolean; thirdParties: boolean; broadcast: boolean; privacy: boolean };
 const NO_CONSENTS: Consents = { age: false, thirdParties: false, broadcast: false, privacy: false };
 
-export default function SubmitForm() {
+export default function SubmitForm({ boardId, peopleAllowed, streamerName, platform }: {
+  boardId: string; peopleAllowed: boolean; streamerName: string; platform: Platform;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [media, setMedia] = useState<Picked[]>([]);
@@ -102,6 +105,7 @@ export default function SubmitForm() {
       const total = media.length + 2;
       setProgress({ label: "Preparing…", done: 0, total });
       const init = await initSubmission({
+        boardId,
         username: String(fd.get("username") ?? ""),
         email: String(fd.get("email") ?? ""),
         country: String(fd.get("country") ?? ""),
@@ -173,13 +177,13 @@ export default function SubmitForm() {
         </div>
 
         <Field
-          label="About your room"
+          label="Description"
           htmlFor="description"
           aside={<span className={`tabular-nums ${descLen > MAX_DESC - 100 ? "text-warning-text" : "text-subtle"}`}>{descLen}/{MAX_DESC}</span>}
         >
           <textarea id="description" name="description" required rows={4} maxLength={MAX_DESC}
             onChange={(e) => setDescLen(e.target.value.length)}
-            placeholder="Your setup, lighting, favourite corner, the story behind it…"
+            placeholder="Tell us about it: what we're looking at, the story behind it…"
             className="field min-h-28 resize-y" />
         </Field>
 
@@ -242,7 +246,7 @@ export default function SubmitForm() {
 
             <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-muted">
               <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-text" />
-              <span>Make sure no <strong className="font-medium text-ink">people, names, addresses, documents or screens</strong> are visible. You&apos;ll see the full checklist before sending.</span>
+              <span>Make sure no {peopleAllowed ? <>children, bystanders, </> : <>people, </>}<strong className="font-medium text-ink">names, addresses, documents or screens</strong> are visible. You&apos;ll see the full checklist before sending.</span>
             </p>
           </div>
 
@@ -267,6 +271,8 @@ export default function SubmitForm() {
         open={reviewOpen}
         onClose={() => { if (!submitting) setReviewOpen(false); }}
         summary={summary}
+        peopleAllowed={peopleAllowed}
+        where={streamPhrase(streamerName, platform)}
         media={media}
         consents={consents}
         setConsent={(k, v) => setConsents((c) => ({ ...c, [k]: v }))}
@@ -308,7 +314,7 @@ function Consent({ name, checked, onChange, children }: {
   );
 }
 
-function PhotoGuidelines() {
+function PhotoGuidelines({ peopleAllowed }: { peopleAllowed: boolean }) {
   return (
     <details className="group rounded-xl border border-line bg-well open:pb-1" open>
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3.5 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
@@ -321,7 +327,11 @@ function PhotoGuidelines() {
         <div>
           <p className="font-medium text-ink">If any photo shows one of these, go back and replace, crop or blur it</p>
           <ul className="mt-1.5 list-disc space-y-1 pl-5 marker:text-subtle">
-            <li><strong className="font-medium text-ink">People:</strong> faces or bodies of you, family, flatmates or anyone else, including in photos, frames, posters, mirrors and screen reflections. <strong className="font-medium text-ink">Never include children.</strong></li>
+            {peopleAllowed ? (
+              <li><strong className="font-medium text-ink">People:</strong> only you, or adults who agreed to appear. Remove bystanders, people in the background, in mirrors or on screens. <strong className="font-medium text-ink">Never include children.</strong></li>
+            ) : (
+              <li><strong className="font-medium text-ink">People:</strong> faces or bodies of you, family, flatmates or anyone else, including in photos, frames, posters, mirrors and screen reflections. <strong className="font-medium text-ink">Never include children.</strong></li>
+            )}
             <li><strong className="font-medium text-ink">Names and addresses:</strong> letters, parcels and labels, diplomas, name tags, house numbers, keys with tags.</li>
             <li><strong className="font-medium text-ink">Documents and cards:</strong> ID, bank cards, tickets, prescriptions, contracts, anything with a QR code or barcode.</li>
             <li><strong className="font-medium text-ink">Screens:</strong> monitors, phones and TVs showing accounts, chats, emails, notifications or passwords. Turn them off or show a neutral wallpaper.</li>
@@ -332,7 +342,7 @@ function PhotoGuidelines() {
         <div>
           <p className="font-medium text-ink">Good to know</p>
           <ul className="mt-1.5 list-disc space-y-1 pl-5 marker:text-subtle">
-            <li>Only upload photos you took yourself, of a space you live in or have permission to show.</li>
+            <li>Only upload photos you took yourself, or that you have permission to share.</li>
             <li>Location and camera data (GPS/EXIF) is removed from your photos automatically, but nothing else is changed.</li>
             <li>If approved, your photos are shown <strong className="font-medium text-ink">live to a public audience</strong>. Viewers may record or clip the stream, and copies made by others can&apos;t be fully removed.</li>
             <li>After sending you get a <strong className="font-medium text-ink">deletion code</strong> to remove your submission at any time.</li>
@@ -347,6 +357,9 @@ type DialogProps = {
   open: boolean;
   onClose: () => void;
   summary: { username: string; country: string };
+  peopleAllowed: boolean;
+  /** "tokyo's Twitch streams" */
+  where: string;
   media: Picked[];
   consents: Consents;
   setConsent: (k: keyof Consents, v: boolean) => void;
@@ -358,7 +371,7 @@ type DialogProps = {
   onSend: () => void;
 };
 
-function ReviewDialog({ open, onClose, summary, media, consents, setConsent, onToken, captchaKey, error, progress, canSend, onSend }: DialogProps) {
+function ReviewDialog({ open, onClose, summary, peopleAllowed, where, media, consents, setConsent, onToken, captchaKey, error, progress, canSend, onSend }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const sending = progress !== null;
 
@@ -409,9 +422,9 @@ function ReviewDialog({ open, onClose, summary, media, consents, setConsent, onT
               ))}
             </ul>
 
-            <PhotoGuidelines />
+            <PhotoGuidelines peopleAllowed={peopleAllowed} />
 
-            <BasicInfo />
+            <BasicInfo where={where} />
 
             <fieldset className="space-y-3" disabled={sending}>
               <legend className="mb-3 text-sm font-medium text-ink">Please confirm</legend>
@@ -419,19 +432,25 @@ function ReviewDialog({ open, onClose, summary, media, consents, setConsent, onT
                 I am <strong className="font-semibold text-ink">{LEGAL.minAge} or older</strong>.
               </Consent>
               <Consent name="consent_third_parties" checked={consents.thirdParties} onChange={(v) => setConsent("thirdParties", v)}>
-                My photos don&apos;t show <strong className="font-semibold text-ink">people or children</strong> (including me),
-                names, addresses, documents or other personal or sensitive information.
+                {peopleAllowed ? (
+                  <>Anyone shown is <strong className="font-semibold text-ink">me, or has agreed to appear</strong>.{" "}
+                  <strong className="font-semibold text-ink">No children</strong> appear, and no names, addresses, documents or other
+                  personal or sensitive information are visible.</>
+                ) : (
+                  <>My photos don&apos;t show <strong className="font-semibold text-ink">people or children</strong> (including me),
+                  names, addresses, documents or other personal or sensitive information.</>
+                )}
               </Consent>
               <Consent name="consent_broadcast" checked={consents.broadcast} onChange={(v) => setConsent("broadcast", v)}>
                 I took these photos or own the rights to them, and I agree they may be shown{" "}
-                <strong className="font-semibold text-ink">live on {LEGAL.broadcastPlatform}</strong> together with my username,
+                <strong className="font-semibold text-ink">live on {where}</strong> together with my username,
                 country and description. I understand the stream is public and may be recorded or clipped.{" "}
                 <Link href="/privacy#photos" target="_blank" className="font-medium text-accent-text underline underline-offset-4">Photo terms</Link>
               </Consent>
               <Consent name="consent_privacy" checked={consents.privacy} onChange={(v) => setConsent("privacy", v)}>
                 I have read the{" "}
                 <Link href="/privacy" target="_blank" className="font-medium text-accent-text underline underline-offset-4">privacy policy</Link>{" "}
-                and agree to my data being processed to review my room. I can withdraw at any time by deleting my submission.
+                and agree to my data being processed to review my submission. I can withdraw at any time by deleting my submission.
               </Consent>
             </fieldset>
 
@@ -477,12 +496,12 @@ function ReviewDialog({ open, onClose, summary, media, consents, setConsent, onT
 }
 
 /** Primera capa informativa (art. 13 RGPD + art. 11 LOPDGDD), justo antes de enviar los datos. */
-function BasicInfo() {
+function BasicInfo({ where }: { where: string }) {
   const rows: [string, React.ReactNode][] = [
-    ["Controller", <>{LEGAL.controllerName} · <a href={`mailto:${LEGAL.contactEmail}`} className="text-accent-text underline underline-offset-4">{LEGAL.contactEmail}</a></>],
-    ["Purpose", "Review your room and, if approved, show it on stream."],
+    ["Controller", <>{LEGAL.controllerName} · <Link href="/contact" target="_blank" className="text-accent-text underline underline-offset-4">Contact</Link></>],
+    ["Purpose", `Review your submission and, if approved, show it live on ${where}.`],
     ["Legal basis", "Your consent (below). Anti-abuse checks: legitimate interest."],
-    ["Recipients", <>Moderators; the stream audience (approved photos, username, country and description only); service providers Supabase, Vercel and Cloudflare, with US transfers under EU safeguards.</>],
+    ["Recipients", <>The streamer running this board and moderators; the stream audience (approved photos, username, country and description only); service providers Supabase, Vercel and Cloudflare, with US transfers under EU safeguards.</>],
     ["Retention", `Deleted automatically after ${LEGAL.retentionDays} days, or sooner if you delete it.`],
     ["Your rights", "Access, correction, deletion, objection, portability and withdrawing consent. Use your deletion code or email us. You can complain to a data protection authority."],
   ];
@@ -502,8 +521,6 @@ function BasicInfo() {
       <p className="border-t border-line px-4 py-2.5 text-[13px] text-muted">
         Full details:{" "}
         <Link href="/privacy" target="_blank" className="font-medium text-accent-text underline underline-offset-4">privacy policy</Link>
-        {" · "}
-        <Link href="/privacy?lang=es" target="_blank" className="font-medium text-accent-text underline underline-offset-4">en español</Link>
       </p>
     </section>
   );

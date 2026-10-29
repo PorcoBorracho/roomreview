@@ -61,8 +61,8 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
     <section>
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Review deck</h2>
-          <p className="mt-1 text-sm text-muted">Approved rooms, oldest first.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Deck</h1>
+          <p className="mt-1 text-sm text-muted">Approved submissions, oldest first.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -94,12 +94,12 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
       {!sub || !media ? (
         <div className="mt-6 rounded-3xl border border-dashed border-line px-6 py-24 text-center">
           <Tv2 className="mx-auto size-9 text-subtle" />
-          <h3 className="mt-3 text-base font-semibold text-white">No approved rooms yet</h3>
-          <p className="mx-auto mt-1 max-w-sm text-sm text-muted">Rooms appear here once a moderator approves them. Use reload to check for new ones.</p>
+          <h3 className="mt-3 text-base font-semibold text-white">No approved submissions yet</h3>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted">Submissions appear here once a moderator approves them. Use reload to check for new ones.</p>
         </div>
       ) : (
-        <div className="mt-6 flex flex-col overflow-hidden rounded-3xl border border-line bg-black shadow-float lg:min-h-[72vh] lg:flex-row">
-          <div className={`relative flex min-h-[55vh] flex-1 items-center justify-center bg-stage p-3 sm:p-5 ${blurred ? "privacy-blur" : ""}`}>
+        <div className="mt-6 flex flex-col overflow-hidden rounded-3xl border border-line bg-black shadow-float lg:h-[calc(100dvh-15rem)] lg:min-h-[560px] lg:flex-row">
+          <div className={`relative flex min-h-[55vh] flex-1 items-center justify-center bg-stage p-3 sm:p-5 lg:min-h-0 ${blurred ? "privacy-blur" : ""}`}>
             <span className="pointer-events-none absolute top-4 left-4 z-10 rounded-lg bg-black/70 px-2.5 py-1 text-xs font-semibold tabular-nums text-highlight backdrop-blur-md">
               Photo {mi + 1} / {m}
             </span>
@@ -107,7 +107,7 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
             <ZoomableImage
               ref={zoom}
               src={media.url}
-              alt={`Room of @${sub.username}, photo ${mi + 1}`}
+              alt={`Submission by @${sub.username}, photo ${mi + 1}`}
               className="absolute inset-0"
               imgClassName="max-h-[calc(100%-2.5rem)] max-w-[calc(100%-2.5rem)] rounded-xl object-contain"
               controlsClassName="bottom-4 left-4"
@@ -138,18 +138,18 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
             </button>
           </div>
 
-          <aside className="flex w-full flex-col border-t border-line bg-panel lg:w-[380px] lg:border-t-0 lg:border-l">
+          <aside className="flex w-full flex-col border-t border-line bg-panel lg:w-[380px] lg:border-t-0 lg:border-l 2xl:w-[440px]">
             <div className="border-b border-line p-6">
               <p className="text-sm tabular-nums text-subtle">#{s + 1}</p>
-              <h3 className="mt-1 font-mono text-2xl font-bold tracking-tight break-all text-white">@{sub.username}</h3>
+              <h2 className="mt-1 text-xl font-bold tracking-tight [overflow-wrap:anywhere] text-white 2xl:text-2xl">@{sub.username}</h2>
               <p className="mt-2 flex items-center gap-1.5 text-sm text-muted">
                 <MapPin className="size-4 text-accent-text" /> {sub.country}
               </p>
             </div>
 
-            <div className="flex-1 space-y-6 overflow-y-auto p-6 lg:max-h-[46vh]">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
               <div>
-                <h4 className="text-xs font-semibold text-subtle">About the room</h4>
+                <h4 className="text-xs font-semibold text-subtle">Description</h4>
                 <p className="mt-2 text-[15px] leading-relaxed whitespace-pre-line break-words text-ink">{sub.description}</p>
               </div>
               {m > 1 && (
@@ -172,7 +172,7 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-line px-6 py-4 text-xs text-subtle">
               <time className="whitespace-nowrap" dateTime={sub.submittedAt}>Sent {new Date(sub.submittedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</time>
               <span className="hidden items-center gap-1 lg:flex">
-                <Kbd>←</Kbd><Kbd>→</Kbd> photos <Kbd>↑</Kbd><Kbd>↓</Kbd> rooms <Kbd>+</Kbd><Kbd>−</Kbd> zoom <Kbd>B</Kbd> blur <Kbd>F</Kbd>
+                <Kbd>←</Kbd><Kbd>→</Kbd> photos <Kbd>↑</Kbd><Kbd>↓</Kbd> entries <Kbd>+</Kbd><Kbd>−</Kbd> zoom <Kbd>B</Kbd> blur <Kbd>F</Kbd>
               </span>
             </div>
           </aside>

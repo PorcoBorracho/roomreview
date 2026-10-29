@@ -3,12 +3,12 @@ import "@fontsource-variable/inter";
 import "@fontsource/fira-code/400.css";
 import "@fontsource/fira-code/600.css";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { LEGAL } from "@/config/legal";
 
 export const metadata: Metadata = {
-  title: "tokyogh0uul Room Review",
-  description: "Submit your room to be reviewed on stream.",
+  title: LEGAL.projectName,
+  description: "Submit photos to be reviewed live on stream.",
   robots: { index: true, follow: false },
 };
 
@@ -18,8 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className="flex min-h-screen flex-col bg-ground font-sans text-ink antialiased">
-        <Navbar />
-        <main className="mx-auto w-full max-w-7xl flex-grow px-4 py-8 sm:px-6 sm:py-12 lg:px-8">{children}</main>
+        {children}
         <Footer />
       </body>
     </html>

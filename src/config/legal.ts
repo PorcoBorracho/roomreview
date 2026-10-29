@@ -11,21 +11,19 @@
  *  POLICY_VERSION: así cada entrega guarda qué versión aceptó.
  */
 export const LEGAL = {
-  /** Nombre o razón social del responsable */
-  controllerName: "[TU NOMBRE O RAZÓN SOCIAL]",
+  /** Nombre o razón social del responsable (se muestra en la web: escríbelo tal cual) */
+  controllerName: "[YOUR NAME OR COMPANY]",
   /** NIF / CIF / ID fiscal (opcional para particulares, obligatorio para empresas) */
   controllerTaxId: "",
   /** Dirección postal o, como mínimo, ciudad y país */
-  controllerAddress: "[CIUDAD, PAÍS]",
+  controllerAddress: "[CITY, COUNTRY]",
   /** Email para ejercer derechos (acceso, borrado…). Debe estar operativo. */
-  contactEmail: "[privacidad@tudominio.com]",
-  /** Nombre público del canal/proyecto */
-  projectName: "tokyogh0uul Room Review",
-  /** Dónde se emite el directo */
-  broadcastPlatform: "Twitch",
+  contactEmail: "[privacy@yourdomain.com]",
+  /** Nombre de la web (marca general). Cada board tiene además su propio streamer. */
+  projectName: "Stream Reviews",
 
   /** Autoridad de control principal (España: AEPD) */
-  authorityName: "Agencia Española de Protección de Datos (AEPD)",
+  authorityName: "Spanish Data Protection Agency (AEPD)",
   authorityUrl: "https://www.aepd.es",
 
   /** Región de Supabase elegida al crear el proyecto (recomendado: una región de la UE) */
@@ -36,7 +34,7 @@ export const LEGAL = {
   /** Días tras el envío en que la entrega (datos y fotos) se borra automáticamente */
   retentionDays: 90,
 
-  policyVersion: "2026-10-29",
+  policyVersion: "2026-10-29.4",
   policyUpdated: "29 October 2026",
 } as const;
 

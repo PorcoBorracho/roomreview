@@ -35,13 +35,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
-      {
-        source: "/(admin|streamer|login)(.*)",
+      ...["/", "/login", "/:slug/queue", "/:slug/deck"].map((source) => ({
+        source,
         headers: [
           { key: "Cache-Control", value: "no-store, max-age=0" },
           { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
-      },
+      })),
+    ];
+  },
+  // Rutas de la versión con una sola sala
+  async redirects() {
+    return [
+      { source: "/admin", destination: "/", permanent: false },
+      { source: "/streamer", destination: "/", permanent: false },
     ];
   },
   experimental: {

@@ -19,3 +19,23 @@ export type DeckSubmission = {
   submittedAt: string;
   media: MediaItem[];
 };
+
+export type Board = {
+  id: string;
+  slug: string;
+  streamerName: string;
+  platform: import("./platforms").Platform;
+  title: string;
+  description: string;
+  isActive: boolean;
+  submissionsOpen: boolean;
+  peopleAllowed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  hasStreamerPassword: boolean;
+};
+
+export type BoardWithStats = Board & { pending: number; approved: number };
+
+/** Lo mínimo que necesitan las vistas de un board */
+export type BoardInfo = Pick<Board, "id" | "slug" | "streamerName" | "platform" | "title" | "description" | "isActive" | "submissionsOpen" | "peopleAllowed">;
