@@ -1,20 +1,24 @@
 import Link from "next/link";
 import { LEGAL, LEGAL_INCOMPLETE } from "@/config/legal";
+import { getT } from "@/i18n/server";
+import ReportLink from "./ReportLink";
 
-export default function Footer() {
+export default async function Footer() {
+  const t = await getT();
   return (
     <footer className="border-t border-line">
       {LEGAL_INCOMPLETE && process.env.NODE_ENV !== "production" && (
-        <p className="bg-warning/15 px-4 py-2 text-center text-xs font-medium text-warning-text">
-          Setup: fill in your controller details in <code className="font-mono">src/config/legal.ts</code> before going live.
-        </p>
+        <p className="bg-warning/15 px-4 py-2 text-center text-xs font-medium text-warning-text">{t.footer.setupWarning}</p>
       )}
       <div className="shell flex flex-col gap-3 py-6 text-[13px] text-subtle sm:flex-row sm:items-center sm:justify-between">
-        <p>{LEGAL.projectName}. Photos are deleted after {LEGAL.retentionDays} days.</p>
-        <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href="/privacy" className="hover:text-strong">Privacy & photo terms</Link>
-          <Link href="/delete" className="hover:text-strong">Delete my submission</Link>
-          <Link href="/contact" className="hover:text-strong">Contact</Link>
+        <p>
+          {LEGAL.projectName}. {t.footer.deletedAfter(LEGAL.retentionDays)}
+        </p>
+        <nav aria-label={t.footer.privacy} className="flex flex-wrap gap-x-5 gap-y-2">
+          <Link href="/privacy" className="hover:text-strong">{t.footer.privacy}</Link>
+          <Link href="/delete" className="hover:text-strong">{t.footer.deleteMine}</Link>
+          <Link href="/contact" className="hover:text-strong">{t.footer.contact}</Link>
+          <ReportLink label={t.footer.report} />
         </nav>
       </div>
     </footer>

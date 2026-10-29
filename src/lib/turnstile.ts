@@ -2,7 +2,8 @@ import "server-only";
 import { headers } from "next/headers";
 import { serverEnv } from "./env";
 
-export const TURNSTILE_ACTION = "submit";
+/** Cada formulario usa su propia acción: un token del formulario de login no sirve para enviar fotos */
+export type TurnstileAction = "submit" | "login" | "report";
 
 // Claves de prueba oficiales de Cloudflare: devuelven un hostname ficticio, así que no se comprueba
 const TEST_SECRET = /^[123]x0{30,}/;
@@ -12,9 +13,9 @@ type SiteVerify = { success?: boolean; hostname?: string; action?: string; "erro
 /**
  * Verifica el token en Cloudflare y además (recomendación de Cloudflare):
  *  · que se emitió para ESTE dominio (un token conseguido en otra web no sirve)
- *  · que se emitió para la acción de envío
+ *  · que se emitió para la acción de ESTE formulario
  */
-export async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
+export async function verifyTurnstile(token: string, ip: string, action: TurnstileAction): Promise<boolean> {
   if (!token || token.length > 2048) return false;
   const secret = serverEnv.turnstileSecret;
   try {
@@ -35,7 +36,7 @@ export async function verifyTurnstile(token: string, ip: string): Promise<boolea
       console.warn("turnstile hostname mismatch", data.hostname, host);
       return false;
     }
-    if (data.action && data.action !== TURNSTILE_ACTION) return false;
+    if (data.action !== action) return false;
     return true;
   } catch (e) {
     console.error("turnstile error", e);

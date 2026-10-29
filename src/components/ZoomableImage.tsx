@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Minus, Plus } from "lucide-react";
+import { useT } from "@/i18n/client";
 
 export type ZoomHandle = { zoomIn: () => void; zoomOut: () => void; reset: () => void };
 
@@ -36,6 +37,7 @@ const ZoomableImage = forwardRef<ZoomHandle, Props>(function ZoomableImage(
   { src, alt, imgClassName = "", className = "", maxScale = 6, showControls = true, controlsClassName = "", onBackgroundClick, onZoomChange, allowPageScroll = false },
   ref,
 ) {
+  const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [view, setView] = useState({ s: 1, x: 0, y: 0 });
@@ -195,15 +197,15 @@ const ZoomableImage = forwardRef<ZoomHandle, Props>(function ZoomableImage(
           onDoubleClick={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <button type="button" onClick={() => zoomCenter(view.s / STEP)} disabled={!zoomed} aria-label="Zoom out"
+          <button type="button" onClick={() => zoomCenter(view.s / STEP)} disabled={!zoomed} aria-label={t.zoom.zoomOut}
             className="pressable flex size-8 items-center justify-center rounded-lg hover:bg-white/10 disabled:opacity-40">
             <Minus className="size-4" />
           </button>
-          <button type="button" onClick={() => setView({ s: 1, x: 0, y: 0 })} aria-label="Reset zoom" title="Fit to screen"
+          <button type="button" onClick={() => setView({ s: 1, x: 0, y: 0 })} aria-label={t.zoom.reset} title={t.zoom.fit}
             className="pressable h-8 min-w-14 rounded-lg px-1.5 text-xs font-semibold tabular-nums hover:bg-white/10">
             {pct}%
           </button>
-          <button type="button" onClick={() => zoomCenter(view.s * STEP)} disabled={view.s >= maxScale} aria-label="Zoom in"
+          <button type="button" onClick={() => zoomCenter(view.s * STEP)} disabled={view.s >= maxScale} aria-label={t.zoom.zoomIn}
             className="pressable flex size-8 items-center justify-center rounded-lg hover:bg-white/10 disabled:opacity-40">
             <Plus className="size-4" />
           </button>

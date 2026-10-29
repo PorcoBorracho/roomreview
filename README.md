@@ -1,360 +1,332 @@
-# Reviews: Next.js + Supabase
+# Stream Reviews
 
-Web para recibir fotos de la comunidad en varios **boards** (salas), cada uno con su propósito (Room Review, Costume Review, Pet Review, Christmas Decorations…) y **su propio streamer**, así que la misma web sirve para varios canales. Cada board tiene su propia URL pública, su cola de moderación y su vista para el streamer. Todo funciona con planes gratuitos: Vercel Hobby, Supabase Free y Cloudflare Turnstile.
+**English** · [Español](README.es.md)
 
-| Ruta | Quién entra | Qué puede hacer |
-|---|---|---|
-| `/` | Solo **admin** | **Panel de control**: crear, editar, activar o desactivar, abrir o cerrar y borrar boards, y copiar el acceso de cada streamer |
-| `/{board}` (p. ej. `/pet-review`) | Cualquiera (invitado) | Enviar una entrega con hasta 5 fotos a ese board |
-| `/{board}/queue` | Solo **admin** | Ver, aprobar, devolver a pendiente y borrar las entregas de ese board |
-| `/{board}/deck` | Admin, o el **streamer de ese board** con su contraseña | Mostrar en directo las entregas aprobadas, sin emails |
-| `/privacy`, `/delete`, `/contact` | Cualquiera | Política de privacidad, borrado de la propia entrega con su código y contacto |
+A self-hosted web app for collecting photos from a community and reviewing them live on stream: room reviews, costume reviews, pet reviews and anything else. One installation hosts any number of **boards**, each with its own public page, its own streamer and its own moderation team.
 
-Toda la web está en inglés. Este README está en español.
+It runs entirely on free plans: **Vercel Hobby**, **Supabase Free** and **Cloudflare Turnstile**.
+
+📘 **How to use it:** see the [user guide (PDF)](docs/Stream-Reviews-User-Guide.pdf). This README covers installing and hosting your own copy.
 
 ---
 
-## ⚠️ Antes de empezar: claves del proyecto antiguo
+## Contents
 
-El HTML original llevaba **la Master Key de JSONBin y las contraseñas escritas en el código**, así que cualquiera que abriera la web podía leerlas. Si esa versión estuvo publicada:
-
-1. **JSONBin:** borra el bin y **regenera la Master Key** (o elimina la cuenta).
-2. **Cloudinary:** borra el *upload preset* `roomreview` sin firmar y, si no lo vas a usar más, las imágenes subidas.
-3. **No reutilices** las contraseñas antiguas (`5wV4…` y `AmiP…`).
-
-Este proyecto ya no usa JSONBin ni Cloudinary.
+1. [Features](#features)
+2. [How it works](#how-it-works)
+3. [Requirements](#requirements)
+4. [Install locally](#1-install-locally)
+5. [Set up Supabase](#2-set-up-supabase)
+6. [Set up Cloudflare Turnstile](#3-set-up-cloudflare-turnstile)
+7. [Secrets and the setup password](#4-secrets-and-the-setup-password)
+8. [Your legal details](#5-your-legal-details)
+9. [Run it locally](#6-run-it-locally)
+10. [Deploy to Vercel](#7-deploy-to-vercel)
+11. [Create the first Site Admin](#8-create-the-first-site-admin)
+12. [Updating](#updating)
+13. [Configuration reference](#configuration-reference)
+14. [Security](#security)
+15. [Privacy and data protection](#privacy-and-data-protection)
+16. [Free plan limits](#free-plan-limits)
+17. [Backups](#backups)
+18. [Troubleshooting](#troubleshooting)
+19. [Project structure](#project-structure)
 
 ---
 
-## 1. Requisitos
+## Features
 
-- **Node.js 20.9 o superior** (recomendado 22 LTS): <https://nodejs.org>
-- **Git** y una cuenta de **GitHub**
-- Cuentas gratuitas en **Supabase** (<https://supabase.com>), **Vercel** (<https://vercel.com>) y **Cloudflare** (<https://dash.cloudflare.com>)
+- **Multiple boards**, each with a public link (`/pixelwitch-room-review`), a moderation queue and a live “deck” for the streamer.
+- **Roles with closed registration:** Site Admin, Admin (own and shared boards), Board Admin (one board’s queue, by password) and Streamer (one board’s deck, by password).
+- **No accounts for participants:** they send up to 5 photos and get a **deletion code** to remove them later.
+- **Privacy by design:** photos are re-encoded in the browser (GPS/EXIF removed), stored privately and only shown through temporary links; emails never reach the deck; a blur key hides a photo instantly on stream.
+- **Two-step verification** (TOTP) for accounts, one-time passwords for new accounts, regenerable board passwords that revoke access instantly.
+- **Problem reports** from any page, and a tamper-proof **activity log** of what the team did.
+- **Five languages:** English, Spanish, Portuguese, French and Japanese, with automatic detection.
+- **Light and dark themes**, responsive from phones to wide screens.
+- **GDPR-oriented:** consent records, layered information, automatic deletion after 90 days.
 
-Comprueba la versión de Node:
+## How it works
 
-```bash
-node -v
+```
+Participant ──► /board          sends photos (no account)
+                   │
+Board Admin ──► /board/queue    approves or deletes
+                   │
+Streamer    ──► /board/deck     shows approved photos live
+                   │
+Daily job          ▼            deletes everything after 90 days
 ```
 
+| Piece | Role |
+|---|---|
+| **Next.js 16** (App Router, server actions) on **Vercel** | Website and all server logic |
+| **Supabase** (Postgres + Storage) | Database and private photo storage |
+| **Cloudflare Turnstile** | Anti-bot check on submissions, sign-ins and reports |
+
+The browser never talks to the database directly. Every read and write goes through the server with a secret key; the public key can’t read or write anything.
+
+## Requirements
+
+- **Node.js 20.9 or later** (22 LTS recommended) and **npm**
+- **Git** and a **GitHub** account
+- Free accounts on **Supabase** (<https://supabase.com>), **Vercel** (<https://vercel.com>) and **Cloudflare** (<https://dash.cloudflare.com>)
+
 ---
 
-## 2. Instalar el proyecto en tu ordenador
+## 1. Install locally
 
 ```bash
+git clone https://github.com/YOUR_USER/room-review.git
 cd room-review
 npm install
-cp .env.example .env.local
+cp .env.example .env.local      # Windows PowerShell: copy .env.example .env.local
 ```
 
-En Windows (PowerShell), en lugar de `cp` usa `copy .env.example .env.local`.
+You’ll fill in `.env.local` over the next steps.
 
-En los pasos siguientes irás rellenando `.env.local`.
+## 2. Set up Supabase
 
----
+### 2.1 Create the project
+1. In <https://supabase.com/dashboard>, click **New project**.
+2. Choose a name, a strong database password, and a **region close to your users**. If you’re in the EU, pick an EU region (for example *Central EU (Frankfurt)*); it makes GDPR compliance simpler, and the region **can’t be changed later**.
 
-## 3. Configurar Supabase
+### 2.2 Create the tables, security and photo bucket
+1. Open **SQL Editor → New query**.
+2. Paste the **whole** content of `supabase/schema.sql` and click **Run**. It must finish without errors.
+3. The script is idempotent: run it again after every update, it never deletes data.
 
-### 3.1 Crear el proyecto
-1. En <https://supabase.com/dashboard> pulsa **New project**.
-2. Elige un nombre, una contraseña de base de datos fuerte (guárdala) y **una región de la Unión Europea**, por ejemplo *Central EU (Frankfurt)*. Mantener los datos en la UE simplifica el cumplimiento del RGPD. Londres y Zúrich no son UE, y la región **no se puede cambiar** después.
-3. Espera a que termine de crearse (1–2 minutos).
+Check that **Table Editor** lists `boards`, `submissions`, `submission_media`, `rate_limits`, `admins`, `board_members`, `problem_reports` and `audit_log`, all marked **RLS enabled**, and that **Storage** has a **private** bucket called `room-media`.
 
-### 3.2 Crear las tablas, la seguridad y el bucket de fotos
-1. Menú lateral → **SQL Editor** → **New query**.
-2. Copia **todo** el contenido de `supabase/schema.sql`, pégalo y pulsa **Run**.
-3. Debe terminar sin errores. El script se puede volver a ejecutar sin perder datos.
+> Don’t add RLS policies or make the bucket public. That’s the design: public keys can’t access anything, and everything goes through the server.
 
-Para comprobarlo:
-- **Table Editor:** deben aparecer `submissions`, `submission_media` y `rate_limits`, todas con la etiqueta **RLS enabled**.
-- **Storage:** debe aparecer el bucket `room-media` marcado como **Private**.
+### 2.3 Copy the keys
+In **Project Settings → API Keys**:
 
-> No añadas políticas RLS ni hagas público el bucket. El diseño es justo ese: las claves públicas no pueden leer ni escribir nada, y todo pasa por el servidor.
-
-### 3.3 Copiar las claves
-Ve a **Project Settings → API Keys** (en proyectos antiguos, **Settings → API**):
-
-| En Supabase | Variable en `.env.local` |
+| In Supabase | Variable in `.env.local` |
 |---|---|
 | Project URL (`https://xxxx.supabase.co`) | `NEXT_PUBLIC_SUPABASE_URL` |
-| **Publishable key** (`sb_publishable_…`) o la antigua **anon** | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
-| **Secret key** (`sb_secret_…`) o la antigua **service_role** | `SUPABASE_SECRET_KEY` |
+| **Publishable key** (`sb_publishable_…`) or legacy **anon** key | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
+| **Secret key** (`sb_secret_…`) or legacy **service_role** key | `SUPABASE_SECRET_KEY` |
 
-> 🔒 La **secret key** da acceso total. Nunca la pongas en el código, en capturas ni en variables que empiecen por `NEXT_PUBLIC_`.
+> 🔒 The secret key gives full access. Never put it in code, screenshots or any variable starting with `NEXT_PUBLIC_`.
 
----
+## 3. Set up Cloudflare Turnstile
 
-## 4. Configurar Cloudflare Turnstile (captcha gratuito)
-
-Para desarrollo local, `.env.example` ya incluye las **claves de prueba** oficiales de Cloudflare, que siempre pasan. Para producción necesitas las tuyas:
+`.env.example` already contains Cloudflare’s official **test keys**, which always pass, so you can skip this step for local development. For production:
 
 1. <https://dash.cloudflare.com> → **Turnstile** → **Add widget**.
-2. Nombre: `Room Review`. En **Hostnames** añade tu dominio de Vercel (por ejemplo `tu-proyecto.vercel.app`) y `localhost`.
-3. Modo: **Managed**.
-4. Copia la **Site Key** en `NEXT_PUBLIC_TURNSTILE_SITE_KEY` y la **Secret Key** en `TURNSTILE_SECRET_KEY`.
+2. Add your domain under **Hostnames** (for example `your-project.vercel.app`, plus `localhost` if you want).
+3. Mode: **Managed**.
+4. Copy the **Site Key** to `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and the **Secret Key** to `TURNSTILE_SECRET_KEY`.
 
----
+## 4. Secrets and the setup password
 
-## 5. Crear la contraseña de admin
-
-La contraseña **no se guarda en texto plano**, solo su hash (scrypt). Genérala con:
+### Setup password (`ADMIN_PASSWORD_HASH`)
+This password is used **once**, at `/setup`, to create the first Site Admin. After that, the setup page disappears and the password no longer gives access to anything. Only its hash is stored:
 
 ```bash
 npm run hash-password
 ```
 
-Escribe la contraseña (no se mostrará en pantalla) y copia el resultado, que empieza por `scrypt:`, en `ADMIN_PASSWORD_HASH`.
+Type a strong password (it isn’t shown) and copy the result, which starts with `scrypt:`, into `ADMIN_PASSWORD_HASH`. Keep the password itself somewhere safe until you’ve created the first account.
 
-Recomendaciones:
-- Mínimo **16 caracteres**. Usa un gestor de contraseñas.
-- **Cambiar la contraseña cierra automáticamente** todas las sesiones de admin abiertas.
-
-### Contraseñas de streamer (una por board)
-No van en las variables de entorno: se ponen en el panel **al crear cada board**, y son obligatorias. El panel propone una aleatoria con el botón *Generate*.
-- **No se pueden cambiar**, solo copiar. En cada tarjeta del panel, *Streamer access* tiene dos botones: **Deck link** y **Password**. Envía las dos cosas al streamer por un canal privado.
-- El streamer abre el enlace del deck, escribe su contraseña y solo ve **ese** board: el deck y la página pública. No puede entrar en el panel, en las colas ni en los decks de otros boards. Si tiene contraseñas de varios boards, la sesión los recuerda todos.
-- Se guardan de dos formas: un **hash** para comprobar el login y una **copia cifrada** (AES-256-GCM, con clave derivada de `SESSION_SECRET`) para poder copiarlas. Si algún día cambias `SESSION_SECRET`, las contraseñas siguen sirviendo para entrar, pero el botón de copiar dejará de funcionar.
-- Los boards creados antes de esta versión no tienen contraseña: el panel muestra **Set password**. Se puede poner una sola vez.
-- Si necesitas otra contraseña para un streamer, crea un board nuevo y borra el antiguo.
-
----
-
-## 6. Secretos de sesión y cron
-
-Genera dos cadenas aleatorias (ejecuta el comando dos veces):
+### Session and cron secrets
+Generate two random strings (run the command twice):
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
 
-- La primera → `SESSION_SECRET` (firma las cookies de sesión; si la cambias, se cierran todas las sesiones).
-- La segunda → `CRON_SECRET` (protege la tarea diaria de limpieza).
+- First one → `SESSION_SECRET`. It signs sessions and, through derived keys, encrypts board passwords and two-step keys.
+- Second one → `CRON_SECRET`. It protects the daily clean-up job.
 
----
+> ⚠️ Changing `SESSION_SECRET` later signs everyone out, makes board passwords impossible to copy (regenerate them) and locks out accounts with two-step verification until a Site Admin resets their password. Set it once and keep it.
 
-## 7. Probar en local
+## 5. Your legal details
+
+The site shows a privacy policy and contact page, which must name whoever runs it. Edit **`src/config/legal.ts`**:
+
+| Field | What to put |
+|---|---|
+| `controllerName` | Your name or your organisation’s legal name |
+| `controllerTaxId` | Tax ID (optional for individuals) |
+| `controllerAddress` | Postal address, or at least city and country |
+| `contactEmail` | A working email for privacy requests |
+| `projectName` | The site name shown in the header (default *Stream Reviews*) |
+| `databaseRegion` | The Supabase region you chose |
+| `authorityName`, `authorityUrl` | Your data protection authority (default: Spain’s AEPD) |
+| `minAge` | Minimum age to submit (default 18; lowering it is not recommended) |
+| `retentionDays` | Days before submissions are deleted (default 90) |
+| `policyVersion` | Bump it (`YYYY-MM-DD.n`) whenever you change the privacy texts |
+
+While the name, address or email still contain the `[placeholder]` values, a yellow warning appears in the footer during local development.
+
+> 💡 If your repository is public and you’d rather not commit these details, change those fields to read from `NEXT_PUBLIC_…` environment variables (they’re shown publicly on the site anyway) and set them in `.env.local` and in Vercel.
+
+## 6. Run it locally
 
 ```bash
 npm run dev
 ```
 
-Comprueba lo siguiente:
-1. Abre <http://localhost:3000>: te pedirá contraseña. Entra con la de admin y verás el **panel de control** con el board *Room Review*. Lo crea `schema.sql` y contiene las entregas que ya tuvieras.
-2. Pulsa **New board** y crea, por ejemplo, *Pet Review*, con su streamer y su contraseña. Su dirección será <http://localhost:3000/pet-review>.
-3. Abre esa dirección en una ventana privada (como haría un invitado) y envía una entrega. Al pulsar *Review and submit* aparecen los avisos y las casillas.
-4. En el panel, pulsa **Queue** en ese board y aprueba la entrega.
-5. Pulsa **Deck**: la entrega aprobada aparece lista para el directo.
-6. En otra ventana privada, abre <http://localhost:3000/pet-review/deck> y entra con la contraseña de streamer de ese board. Es lo que verá el streamer.
+Open <http://localhost:3000>. You’ll be sent to the sign-in page with a link to **Set up the site**: follow [step 8](#8-create-the-first-site-admin). Stop the server with `Ctrl + C`.
 
-**Modo claro / oscuro:** el selector de la cabecera tiene tres opciones: sistema (por defecto), claro y oscuro. Cada visitante elige el suyo y se recuerda en su navegador. En ambos temas, el fondo de las fotos del deck sigue oscuro, porque las fotos se ven mejor así y es lo que sale en directo.
+Quick tour once you’re in:
+1. **New board** → create a board. Both board passwords are generated for you.
+2. Open the board’s public link in a private window and send a submission.
+3. Open `/your-board/queue` in another private window with the **Board Admin password** and approve it.
+4. Open `/your-board/deck` with the **streamer password**: that’s what the streamer sees.
 
-Atajos de teclado en el deck: **← →** cambian de foto, **↑ ↓** cambian de entrega, **+ / −** zoom, **B** difumina y **F** abre la pantalla completa.
+## 7. Deploy to Vercel
 
-### Gestionar boards
-- **Streamer y plataforma** (obligatorios al crear un board): el nombre del canal y dónde emite (Twitch, YouTube, Kick, TikTok u otra). Aparecen en la página pública y en la casilla de consentimiento, por ejemplo: *"…may be shown live on PixelWitch's YouTube streams"*. Por eso es importante que sean correctos. La dirección se sugiere automáticamente a partir del streamer y el título (`pixelwitch-costume-review`). Con varios streamers, el panel muestra un filtro **All streamers**.
-- Los boards creados antes de esta versión no tienen streamer: el panel los marca con *No streamer set*. Edítalos y añádelo.
-- **Active:** si está apagado, la página pública da error 404. Tú sigues viéndola desde el panel para prepararla.
-- **Accepting submissions:** si está apagado, la página se ve, pero muestra *Submissions are closed*. El servidor también rechaza los envíos, aunque alguien tuviera el formulario abierto.
-- **People may appear in photos:** actívalo en boards donde salgan personas, como disfraces. Cambia los avisos y la casilla de consentimiento: quien sale tiene que ser quien envía o haber dado permiso, y **nunca menores**. Revisa esas fotos con especial cuidado.
-- **Edit:** título, descripción, dirección y opciones. Si cambias la dirección, los enlaces antiguos dejan de funcionar. Si otro admin guardó cambios mientras editabas, se te avisa en lugar de sobrescribirlos.
-- **Delete** (mantener pulsado): borra el board con **todas** sus entregas y fotos.
+1. Push the project to a GitHub repository (**private** recommended). `.env.local` is in `.gitignore` and must never be committed.
+2. <https://vercel.com/new> → **Import** the repository. The framework (Next.js) is detected automatically; don’t change the build settings.
+3. Under **Environment Variables**, add every variable from `.env.local` with its production value:
 
-Algunas direcciones están reservadas y no se pueden usar: `login`, `privacy`, `delete`, `api`, `admin`, `streamer`, `queue`, `deck`…
-
----
-
-## 8. Subir el código a GitHub
-
-```bash
-git init
-git add .
-git commit -m "Room Review inicial"
-```
-
-En GitHub crea un repositorio nuevo (**Private** recomendado) y luego:
-
-```bash
-git remote add origin https://github.com/TU_USUARIO/room-review.git
-git branch -M main
-git push -u origin main
-```
-
-> `.env.local` está en `.gitignore` y **no se sube**. Compruébalo en GitHub: no debe aparecer.
-
----
-
-## 9. Desplegar en Vercel
-
-1. <https://vercel.com/new> → **Import** tu repositorio de GitHub.
-2. Framework: **Next.js** (se detecta solo). No cambies los comandos de build.
-3. Abre **Environment Variables** y añade **todas** las variables de `.env.local`, con los valores de producción:
-
-   | Variable | Valor |
+   | Variable | Value |
    |---|---|
-   | `NEXT_PUBLIC_SUPABASE_URL` | URL de Supabase |
+   | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable / anon key |
    | `SUPABASE_SECRET_KEY` | Secret / service_role key |
-   | `ADMIN_PASSWORD_HASH` | `scrypt:…` |
-   | `SESSION_SECRET` | Cadena aleatoria |
-   | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Tu Site Key real (no la de prueba) |
-   | `TURNSTILE_SECRET_KEY` | Tu Secret Key real |
-   | `CRON_SECRET` | Cadena aleatoria |
+   | `ADMIN_PASSWORD_HASH` | `scrypt:…` (setup password) |
+   | `SESSION_SECRET` | Random string |
+   | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Your real Turnstile site key |
+   | `TURNSTILE_SECRET_KEY` | Your real Turnstile secret key |
+   | `CRON_SECRET` | Random string |
 
-4. Pulsa **Deploy**.
-5. Si tu dominio final es distinto del que pusiste en Turnstile, añádelo en Cloudflare → Turnstile → tu widget → Hostnames.
+4. Click **Deploy**.
+5. Make sure your final domain is listed in your Turnstile widget’s **Hostnames**.
 
-La limpieza diaria (`vercel.json`) se activa sola. Vercel envía `CRON_SECRET` automáticamente y la tarea borra cada día las subidas que se quedaron a medias. La verás en **Settings → Cron Jobs**.
+The daily clean-up (`vercel.json`, 04:00 UTC) is enabled automatically; Vercel sends `CRON_SECRET` with each run. It deletes incomplete uploads, expired submissions, old resolved problem reports and activity log entries older than a year. You’ll find it under **Settings → Cron Jobs**.
 
-> Cada vez que cambies una variable de entorno en Vercel, haz **Redeploy** para que se aplique.
+> After changing any environment variable in Vercel, **redeploy** so it takes effect.
 
----
+## 8. Create the first Site Admin
 
-## 10. Cómo está protegida la web
+1. Open `https://your-domain/setup`.
+2. Enter the **setup password** (the one you hashed into `ADMIN_PASSWORD_HASH`), a username and a password for your account (12+ characters, not containing the username).
+3. You’re signed in to the control panel. Go to **Account** and turn on **two-step verification**.
+4. Create accounts for the rest of the team in **Admins**. Each person gets a one-time password valid for 72 hours.
 
-**Accesos y roles**
-- **Invitados:** solo pueden *crear* entregas. No pueden leer, editar ni borrar nada, ni siquiera lo que acaban de subir.
-- Las contraseñas se comprueban **en el servidor** con scrypt en tiempo constante. Nunca viajan al navegador ni están en el código.
-- La sesión es una cookie `__Host-` firmada (JWT HS256) con las opciones `HttpOnly`, `Secure` y `SameSite=Strict`. Caduca a las 12 h.
-- **Doble control de acceso:** el *proxy* de Next.js bloquea el panel (`/`), las colas y los decks, y además **cada página y cada acción** vuelve a comprobar el rol en el servidor.
-- La vista streamer **nunca recibe los emails**.
-
-**Base de datos y fotos**
-- RLS activado y forzado, **sin políticas**, y permisos revocados a `anon` y `authenticated`. La clave pública no puede leer ninguna tabla.
-- Bucket **privado**:
-  - Solo se sube mediante URLs firmadas **de un solo uso** que genera el servidor.
-  - Solo se ve mediante URLs firmadas temporales.
-  - Supabase rechaza en origen los archivos de más de **6 MB** o que no sean JPEG, PNG o WebP. El navegador comprime cada foto por debajo de ese tamaño; si una es muy detallada, la vuelve a comprimir con menos calidad o resolución.
-- Los archivos se guardan con nombres aleatorios (UUID), nunca con el nombre original.
-
-**Validación de las subidas**
-- El navegador **vuelve a codificar cada foto**: elimina los metadatos EXIF (incluido el **GPS**), corrige la orientación y la reduce a 2560 px como máximo.
-- Antes de publicar una entrega, el servidor comprueba que todos los archivos existen, su tamaño y la **firma binaria real** de cada imagen.
-- Todos los campos se validan con Zod en el servidor (longitud, caracteres permitidos, email). React escapa todo el texto que se muestra.
-
-**Anti-abuso**
-- Captcha Turnstile en cada envío. El servidor comprueba que el token se emitió para **tu dominio** y para la acción de envío, así que un token conseguido en otra web no sirve.
-- Límites de peticiones atómicos en Postgres:
-  - 5 envíos por hora por IP y 100 por hora en total.
-  - Login: 5 intentos fallidos cada 15 minutos por IP, 20 por board y 300 en total. Un login correcto pone a cero los contadores de su IP y su board, así que una persona que se equivoca un par de veces no se queda bloqueada.
-- Las IPs se guardan como hash HMAC, nunca en claro.
-
-**Concurrencia (no se pierden datos)**
-- Cada entrega y sus fotos se crean en **una sola transacción** (función `create_submission`): o se guarda todo o nada.
-- Cada envío es una fila independiente, así que dos usuarios a la vez nunca se pisan. El sistema antiguo, en cambio, reescribía un JSON entero en cada envío.
-- Aprobar, devolver a pendiente y borrar son **operaciones condicionales**. Si dos admins actúan a la vez sobre la misma entrega, solo una acción se aplica y el otro admin recibe un aviso.
-
-**Content-Security-Policy con nonce:** en cada petición, `src/proxy.ts` genera un valor aleatorio (nonce). El navegador solo ejecuta los scripts que lo llevan, junto con los que esos scripts carguen (`'strict-dynamic'`). Un script inyectado por un atacante no se ejecutaría. Además: `script-src-attr 'none'`, `base-uri 'none'`, `object-src 'none'` y `frame-ancestors 'none'`.
-
-**Otras cabeceras HTTP:** HSTS, `Cross-Origin-Opener-Policy` y `Cross-Origin-Resource-Policy`, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy`. Además, el panel, las colas, los decks y `/login` se sirven sin caché y con `noindex`.
+From here on, the [user guide](docs/Stream-Reviews-User-Guide.pdf) explains every screen.
 
 ---
 
-## 11. Privacidad y protección de datos (RGPD / LOPDGDD)
+## Updating
 
-> ⚠️ Esto no es asesoramiento legal. El proyecto incluye las piezas técnicas y un texto de política de privacidad pensado para el RGPD europeo y la LOPDGDD española. Si la web va a tener uso comercial, o un volumen grande de participantes, haz que un profesional revise los textos.
+1. Pull or copy the new version, keeping your `.env.local` and your details in `src/config/legal.ts`.
+2. `npm install`
+3. Run the **whole** `supabase/schema.sql` again in the Supabase SQL Editor.
+4. Deploy (push to GitHub; Vercel redeploys automatically).
 
-### Qué incluye ya la web
-- Todo lo de abajo se aplica a **todos los boards**. En los boards con *People may appear in photos* activado, los avisos y la casilla de terceros se adaptan automáticamente.
-- **Política de privacidad y condiciones de las fotos** en inglés y español: `/privacy`.
-- **Paso de revisión antes de enviar.** Al pulsar *Review and submit* se abre una ventana con la guía de privacidad de las fotos, la información básica sobre protección de datos (primera capa, art. 11 LOPDGDD) y las casillas. **No se envía nada hasta confirmar.** El captcha de Cloudflare solo se carga en ese paso.
-- **Cuatro casillas de consentimiento**, sin marcar y obligatorias, que también se comprueban en el servidor:
-  - tener 18 años o más;
-  - que no aparecen personas, menores ni datos sensibles;
-  - aceptar la emisión pública;
-  - aceptar la política de privacidad.
-- **Registro del consentimiento:** cada entrega guarda la fecha y la versión de la política aceptada (art. 7.1 RGPD).
-- **Avisos detallados** sobre las fotos: personas, nombres, documentos, pantallas, pistas de ubicación, datos sensibles y emisión pública. Junto a la zona de subida hay un aviso breve, y en el paso de revisión, la lista completa.
-- **Derecho de supresión sin cuenta:** al enviar, la persona recibe un **código de borrado** (solo se guarda su hash) que puede usar en `/delete`.
-- **Borrado automático** de las entregas a los 90 días (`retentionDays`), gracias al cron diario.
-- **Avisos al equipo:**
-  - En cada cola, recordatorio de confidencialidad y **emails ocultos por defecto**, por si la pantalla sale en directo.
-  - En cada deck, botón **Blur** (tecla **B**) que difumina la foto al instante si se cuela algo personal.
-- **Solo cookies técnicas** (sesión de moderadores y Turnstile). Por eso no hace falta banner de cookies.
+## Configuration reference
 
-### Lo que tienes que hacer tú antes de publicar
-1. **Rellena `src/config/legal.ts`.** `projectName` es el nombre general de la web que sale en la cabecera (por defecto *Stream Reviews*). Además:
-   - tu nombre o razón social;
-   - ciudad y país;
-   - un **email de contacto operativo**;
-   - la región de Supabase que elegiste.
+| Setting | Where | Default |
+|---|---|---|
+| Legal details, minimum age, retention | `src/config/legal.ts` | 18 years, 90 days |
+| Photos per submission, size limit, description length | `src/lib/limits.ts` | 5 photos, 6 MB, 2,000 chars |
+| Problem report retention | `src/lib/limits.ts` | 30 days after resolved, 365 max |
+| Activity log retention | `src/lib/limits.ts` (`AUDIT_DAYS`) and `audit_log_guard` in `schema.sql` | 365 days |
+| One-time password lifetime | `src/lib/accounts.ts` (`OTP_HOURS`) | 72 hours |
+| Texts in each language | `src/i18n/dict/*.tsx` | — |
+| Privacy policy in each language | `src/i18n/privacy/*.tsx` | — |
+| Cron schedule | `vercel.json` | daily, 04:00 UTC |
 
-   Mientras falten datos, en local aparece un aviso amarillo en el pie de la página.
-2. **Acepta los contratos de encargo de tratamiento (DPA)** de cada proveedor. Los encontrarás en la sección legal de cada uno: Supabase (<https://supabase.com/legal/dpa>), Vercel y Cloudflare. Guarda una copia.
-3. **Crea tu registro de actividades de tratamiento** (art. 30 RGPD). Basta un documento con este contenido:
-   - *Actividad:* selección de habitaciones para emisión en directo.
-   - *Datos:* usuario, email, país, descripción y fotos; IP cifrada con fines de seguridad.
-   - *Base jurídica:* consentimiento, e interés legítimo para la seguridad.
-   - *Destinatarios:* moderadores, público del directo (solo lo aprobado), Supabase, Vercel y Cloudflare.
-   - *Transferencias:* EE. UU. (DPF / cláusulas tipo).
-   - *Plazo:* 90 días.
-   - *Medidas de seguridad:* las del apartado 10.
-4. **Revisa la configuración de tu canal en Twitch.** Decide cuánto tiempo guardas los VODs y si permites clips. Si alguien pide que se borre su habitación, borra también los VODs y clips del canal donde aparezca.
-5. **Atiende las peticiones por email** (acceso, borrado, etc.) en un plazo máximo de **un mes**. Para borrar a mano, usa el botón Delete del panel de admin.
-6. **Revisa cada foto antes de aprobarla**, aunque quien la envía haya confirmado que no hay datos personales. Ante la duda, no la apruebes.
-7. Si cambias la política de privacidad, **sube `policyVersion`** en `legal.ts`. Así sabrás qué versión aceptó cada entrega.
+If you change the photo size limit, also change `file_size_limit` for the bucket at the end of `schema.sql`. Each dictionary has the same type as the English one: if a translation is missing a text, the project won’t compile.
 
-### Cambiar plazos o edad mínima
-En `src/config/legal.ts`:
-- `retentionDays` controla los días de conservación. Se aplica cada noche con el cron.
-- `minAge` es la edad mínima, 18 por defecto. En España se puede consentir desde los 14, y hay un proyecto de ley en el Congreso para subirlo a 16. Exigir 18 evita tratar datos de menores, así que se recomienda no bajarla.
+## Security
 
----
+**Accounts and sessions**
+- Closed registration: only a Site Admin creates accounts, with a one-time password (~99 bits) that expires in 72 hours and must be changed on first sign-in.
+- Passwords (12+ characters) are hashed with scrypt and checked in constant time; unknown usernames are checked against a dummy hash so timing doesn’t reveal them.
+- Optional **TOTP two-step verification**; the secret is encrypted and each code can be used once, enforced atomically in the database.
+- Sessions are signed `__Host-` cookies (HS256 with an HKDF-derived key), `HttpOnly`, `Secure`, `SameSite=Strict`, 12 hours.
+- The account is re-read from the database on every request: changing a password, role or two-step setting, or deleting the account, ends its sessions immediately. Board access carries the password version, so regenerating a board password revokes it at once.
 
-## 12. Límites del plan gratuito
+**Access control**
+- A proxy blocks private pages without a session, and **every page and every server action** checks the exact permission for that board again.
+- The deck never receives emails. Site Admin pages return 404 to everyone else.
 
-Estos límites cambian con el tiempo; revisa las páginas de precios de Supabase y Vercel.
+**Abuse protection**
+- Turnstile on submissions, every sign-in, setup and problem reports; the server checks the token’s hostname and action.
+- Atomic rate limits in Postgres (per IP, per account, per board and global). IPs are stored only as keyed hashes.
 
-- **Supabase Free:**
-  - Unos **1 GB de almacenamiento** de archivos. Con la compresión automática, una foto ocupa unos 0,5–1,5 MB, así que caben **entre 700 y 2000 fotos**. Borra las entregas antiguas desde el panel de admin para liberar espacio.
-  - El proyecto **se pausa tras ~7 días sin actividad**. Se reactiva desde el dashboard de Supabase (*Restore project*). El cron diario de Vercel hace una consulta cada día, lo que normalmente evita la pausa.
-- **Vercel Hobby:** solo para **uso no comercial**. El cron se ejecuta una vez al día.
+**Data and files**
+- RLS enabled and forced with no policies; privileges revoked from `anon` and `authenticated`.
+- Private bucket: uploads only through single-use signed URLs, viewing only through temporary signed URLs. Supabase rejects files over 6 MB or that aren’t JPEG, PNG or WebP, and the server checks each file’s real binary signature.
+- Submissions and their photos are created in a single transaction; moderation actions are conditional updates, so concurrent moderators never overwrite each other.
 
----
+**Accountability**
+- Append-only `audit_log`, protected by Postgres triggers; even the secret key has no `UPDATE` privilege on it. It never stores participant data.
 
-## 13. Copias de seguridad (recomendado)
+**HTTP headers**
+- Per-request nonce **Content-Security-Policy** with `'strict-dynamic'`, plus HSTS, COOP/CORP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` and `Permissions-Policy`. Private pages are `no-store` and `noindex`.
 
-El plan gratuito de Supabase no incluye copias descargables. Para exportar la base de datos manualmente:
+## Privacy and data protection
 
-1. Supabase → botón **Connect** (arriba) → copia la cadena de conexión de tipo **Session pooler**.
-2. Con Docker instalado, ejecuta:
+> ⚠️ Not legal advice. The project includes the technical pieces and policy texts written with the EU GDPR and Spain’s LOPDGDD in mind. Have a professional review them for your situation, especially for commercial use.
+
+What’s already built in:
+- Privacy policy and photo terms in five languages (`/privacy`), with a summary card for each kind of data: what, why, legal basis and how long.
+- A review step before anything is sent, with layered information and four unticked consent boxes, checked on the server too.
+- Consent records (date and policy version) and self-service deletion with a code.
+- Automatic deletion after 90 days; problem reports and the activity log are also purged automatically.
+- Only strictly necessary or user-requested cookies (session, two-step step, Turnstile, language), so no cookie banner is needed.
+
+What you need to do:
+1. Fill in `src/config/legal.ts` ([step 5](#5-your-legal-details)) and adapt the policy texts in `src/i18n/privacy/` if you’re outside Spain or the EU.
+2. Accept the data processing agreements of Supabase, Vercel and Cloudflare.
+3. Keep a record of processing activities (GDPR art. 30): submissions, problem reports and staff accounts with their activity log.
+4. Answer access and deletion requests within one month.
+5. Train your team with the privacy checklist in the user guide.
+
+## Free plan limits
+
+These change over time; check Supabase’s and Vercel’s pricing pages.
+
+- **Supabase Free:** about **1 GB of file storage** (roughly 700 to 2,000 compressed photos). Projects **pause after about a week without activity**; the daily cron usually prevents it, and you can restore a paused project from the dashboard.
+- **Vercel Hobby:** **non-commercial use only**, and cron jobs run once a day. For commercial use, move to a paid plan.
+
+## Backups
+
+The Supabase free plan doesn’t include downloadable backups. To export the database manually:
 
 ```bash
-docker run --rm postgres:17 pg_dump "CADENA_DE_CONEXION" --schema=public --data-only > backup.sql
+docker run --rm postgres:17 pg_dump "YOUR_SESSION_POOLER_CONNECTION_STRING" --schema=public --data-only > backup.sql
 ```
 
-> El backup contiene emails: guárdalo en un sitio privado. Las fotos no se incluyen; se pueden descargar desde Supabase → Storage.
+Get the connection string from Supabase → **Connect** → *Session pooler*. The backup contains emails and password hashes: keep it private. Photos aren’t included; download them from Supabase → Storage if needed.
 
----
+## Troubleshooting
 
-## 14. Problemas frecuentes
-
-| Problema | Solución |
+| Problem | Solution |
 |---|---|
-| `Falta la variable de entorno …` | Falta esa variable en `.env.local` o en Vercel. Añádela y reinicia o redespliega. |
-| El captcha no aparece o falla | El dominio no está en Hostnames de Turnstile, o estás usando las claves de prueba en producción. |
-| *"Incorrect password"* con la contraseña correcta | El hash se copió incompleto. Debe tener 6 partes separadas por `:`. Vuelve a generarlo. |
-| *"Too many attempts"* | Espera 15 minutos, o en Supabase → Table Editor → `rate_limits` borra las filas que empiezan por `login:`. |
-| Error al subir fotos | Revisa que se ejecutó `schema.sql` (el bucket `room-media` debe existir) y que las claves de Supabase son correctas. |
-| Las imágenes del streamer dejan de verse tras horas abiertas | Las URLs firmadas caducan. La vista se refresca sola cada 30 min; también puedes pulsar el botón ⟳. |
-| Supabase da error tras días sin uso | El proyecto está pausado. Reactívalo desde el dashboard. |
-| La página de un board da 404 | El board está desactivado (actívalo en el panel) o la dirección no coincide. |
-| Error `function create_submission(...) does not exist` tras actualizar | Vuelve a ejecutar `supabase/schema.sql` completo en el SQL Editor. Añade las columnas de consentimiento sin perder datos. |
+| `Missing environment variable …` | Add that variable to `.env.local` or Vercel, then restart or redeploy. |
+| Turnstile doesn’t appear or always fails | Your domain isn’t in the widget’s Hostnames, or you’re using test keys in production. |
+| `/setup` says *Incorrect password* | It expects the password whose hash is in `ADMIN_PASSWORD_HASH`. If the hash was copied incompletely (it has 6 parts separated by `:`), generate it again. |
+| `/setup` redirects to sign-in | An account already exists. Sign in with it. |
+| *This one-time password has expired* | A Site Admin must use **Reset password** on that account. |
+| The only Site Admin lost their two-step device | In the Supabase SQL Editor: `update admins set totp_secret_enc = null, totp_enabled_at = null, session_version = session_version + 1 where username = 'their_username';` |
+| *Too many attempts* | Wait 15 minutes, or delete rows starting with `login:` or `mfa:` from the `rate_limits` table. |
+| Photo upload fails | Check that `schema.sql` ran (the `room-media` bucket must exist) and that the Supabase keys are correct. |
+| `function … does not exist` after updating | Run the whole `supabase/schema.sql` again. |
+| *audit log entries can only be deleted after 365 days* | Intended: the activity log can’t be deleted early. |
+| Supabase errors after days without use | The project is paused. Restore it from the dashboard. |
 
----
-
-## Estructura del proyecto
+## Project structure
 
 ```
-supabase/schema.sql        Tablas, RLS, funciones atómicas y bucket privado
-scripts/hash-password.mjs  Genera los hashes de las contraseñas
-src/proxy.ts               Bloquea el panel, las colas y los decks sin sesión
-src/actions/               Lógica de servidor (envío, login, acciones de admin)
-src/lib/                   Sesión, validación, rate limit, Supabase, captcha
-src/components/            Interfaz (formulario, cola admin, vista streamer)
-src/app/page.tsx           Panel de control (/)
-src/app/[slug]/            Página pública, queue y deck de cada board
-src/app/                   Además: /login , /privacy , /delete
-src/config/legal.ts        Tus datos legales, plazo de conservación y edad mínima
-vercel.json                Cron diario de limpieza
+supabase/schema.sql        Tables, RLS, atomic functions, audit log and private bucket
+scripts/hash-password.mjs  Generates the setup password hash
+docs/                      User guide (PDF)
+src/proxy.ts               CSP and first access barrier for private pages
+src/actions/               Server logic: submissions, sign-in, boards, accounts, problems, language
+src/lib/                   Sessions and permissions, validation, rate limits, TOTP, audit, limits
+src/i18n/                  Languages: dictionaries and privacy policy
+src/components/            User interface
+src/app/(site)/            Control panel, admins, problems, activity, account, sign-in, setup, report, privacy, delete, contact
+src/app/[slug]/            Each board’s public page, queue and deck
+src/config/legal.ts        Your legal details, retention and minimum age
+vercel.json                Daily clean-up job
 ```

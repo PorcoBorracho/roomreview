@@ -2,6 +2,9 @@
 
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/i18n/client";
+
+const TS_LANG: Record<string, string> = { en: "en", es: "es", pt: "pt-br", fr: "fr", ja: "ja" };
 
 declare global {
   interface Window {
@@ -13,12 +16,25 @@ declare global {
   }
 }
 
-export default function Turnstile({ onToken, resetKey }: { onToken: (t: string) => void; resetKey: number }) {
+type Props = {
+  /** Debe coincidir con la acción que comprueba el servidor (lib/turnstile.ts) */
+  action?: "submit" | "login" | "report";
+  onToken?: (t: string) => void;
+  /** Cambiarlo genera un token nuevo (los tokens son de un solo uso) */
+  resetKey?: number;
+};
+
+/**
+ * Comprobación anti-bots de Cloudflare. Dentro de un <form> añade el campo oculto
+ * "cf-turnstile-response", que es lo que leen las acciones del servidor.
+ */
+export default function Turnstile({ onToken, resetKey = 0, action = "submit" }: Props) {
+  const locale = useLocale();
   const ref = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const cb = useRef(onToken);
-  cb.current = onToken;
+  const cb = useRef(onToken ?? (() => {}));
+  cb.current = onToken ?? (() => {});
 
   useEffect(() => {
     if (window.turnstile) setLoaded(true);
@@ -33,7 +49,8 @@ export default function Turnstile({ onToken, resetKey }: { onToken: (t: string) 
     }
     widgetId.current = window.turnstile.render(ref.current, {
       sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-      action: "submit", // debe coincidir con TURNSTILE_ACTION en el servidor
+      action,
+      language: TS_LANG[locale] ?? "auto",
       // Sigue el tema de la página (claro u oscuro)
       theme: document.documentElement.getAttribute("data-theme") ?? "auto",
       callback: (t: string) => cb.current(t),

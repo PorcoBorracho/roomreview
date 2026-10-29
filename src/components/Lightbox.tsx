@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import ZoomableImage, { type ZoomHandle } from "./ZoomableImage";
+import { useT } from "@/i18n/client";
 
 type Props = {
   url: string | null;
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurred = false }: Props) {
+  const t = useT();
   const closeRef = useRef<HTMLButtonElement>(null);
   const zoom = useRef<ZoomHandle>(null);
   const handlers = useRef({ onClose, onPrev, onNext });
@@ -48,7 +50,7 @@ export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurre
 
   if (!url) return null;
   return (
-    <div role="dialog" aria-modal="true" aria-label={caption ?? "Photo"} className={`enter-fade fixed inset-0 z-50 bg-black/95 ${blurred ? "privacy-blur" : ""}`}>
+    <div role="dialog" aria-modal="true" aria-label={caption ?? t.lightbox.photo} className={`enter-fade fixed inset-0 z-50 bg-black/95 ${blurred ? "privacy-blur" : ""}`}>
       <ZoomableImage
         ref={zoom}
         src={url}
@@ -59,18 +61,18 @@ export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurre
         onBackgroundClick={onClose}
       />
 
-      <button ref={closeRef} onClick={onClose} aria-label="Close"
+      <button ref={closeRef} onClick={onClose} aria-label={t.common.close}
         className="pressable absolute top-4 right-4 z-10 flex size-10 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">
         <X className="size-5" />
       </button>
       {onPrev && (
-        <button onClick={onPrev} aria-label="Previous photo"
+        <button onClick={onPrev} aria-label={t.deck.prevPhoto}
           className="pressable absolute top-1/2 left-4 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">
           <ChevronLeft className="size-5" />
         </button>
       )}
       {onNext && (
-        <button onClick={onNext} aria-label="Next photo"
+        <button onClick={onNext} aria-label={t.deck.nextPhoto}
           className="pressable absolute top-1/2 right-4 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">
           <ChevronRight className="size-5" />
         </button>

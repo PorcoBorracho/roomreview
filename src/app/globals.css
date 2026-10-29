@@ -35,7 +35,8 @@
   --color-warning: oklch(0.800 0.130 80);
   --color-warning-text: oklch(0.860 0.100 85);
 
-  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  /* Inter para el alfabeto latino; para japonés, las fuentes del sistema (sin descargar nada) */
+  --font-sans: "Inter Variable", "Inter", system-ui, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
   --font-mono: "Fira Code", "JetBrains Mono", ui-monospace, monospace;
 
   /* Curvas de movimiento (Emil Kowalski) */
@@ -139,6 +140,14 @@ body {
 input, textarea { caret-color: var(--color-accent-text); }
 ::placeholder { color: var(--color-hint); opacity: 1; }
 
+/* Listas desplegables nativas (idioma, plataforma, filtros): el navegador pinta la lista con los
+   colores del <select>, así que se fijan en los dos temas para que el texto nunca se confunda con el fondo */
+@layer base {
+  select { background-color: var(--color-well); color: var(--color-ink); }
+  select option, select optgroup { background-color: var(--color-card); color: var(--color-ink); }
+  select option:checked { background-color: var(--color-raised); color: var(--color-strong); }
+}
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--color-ground); }
 ::-webkit-scrollbar-thumb { background: var(--color-line); border-radius: 8px; border: 2px solid var(--color-ground); }
@@ -156,6 +165,15 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 h1, h2, h3 { text-wrap: balance; }
 p { text-wrap: pretty; }
+
+/* Japonés: cortes de línea por frases (no a mitad de palabra), algo más de interlineado
+   y sin el tracking negativo pensado para el alfabeto latino */
+:lang(ja) {
+  word-break: auto-phrase;
+  line-break: strict;
+}
+:lang(ja) :is(h1, h2, h3) { letter-spacing: 0; }
+:lang(ja) p, :lang(ja) li { line-height: 1.8; }
 
 @layer components {
   /* Respuesta táctil al pulsar: scale 0.97, 160 ms */
@@ -241,6 +259,18 @@ p { text-wrap: pretty; }
 .legal strong { color: var(--color-ink); font-weight: 600; }
 .legal a { color: var(--color-accent-text); text-decoration: underline; text-underline-offset: 4px; }
 .legal a:hover { color: var(--color-strong); }
+.legal h3 { font-size: 15px; font-weight: 600; color: var(--color-strong); }
+
+/* Fichas de tratamiento: qué / para qué / base legal / plazo */
+.legal-data { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+.legal-data > section { border: 1px solid var(--color-line); border-radius: 0.875rem; padding: 0.875rem 1rem; background: var(--color-card); }
+.legal-data dl { display: grid; gap: 0.15rem 1rem; margin-top: 0.5rem; }
+.legal-data dt { font-size: 13px; font-weight: 600; color: var(--color-subtle); }
+.legal-data dd { font-size: 14px; line-height: 1.6; color: var(--color-muted); margin-bottom: 0.35rem; }
+@media (min-width: 640px) {
+  .legal-data dl { grid-template-columns: 8.5rem minmax(0, 1fr); }
+  .legal-data dt { padding-top: 0.1rem; }
+}
 
 /* Difuminado de privacidad en directo: inmediato, sin transición */
 .privacy-blur .zoom-img { filter: blur(32px) saturate(0.6); }

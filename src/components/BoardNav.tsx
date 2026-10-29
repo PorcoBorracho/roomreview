@@ -3,14 +3,16 @@
 import { usePathname } from "next/navigation";
 import { Globe, ShieldCheck, Tv } from "lucide-react";
 import Segmented from "./Segmented";
+import { useT } from "@/i18n/client";
 
-export default function BoardNav({ slug, admin }: { slug: string; admin: boolean }) {
+export default function BoardNav({ slug, queue, deck }: { slug: string; queue: boolean; deck: boolean }) {
+  const t = useT();
   const path = usePathname();
   const base = `/${slug}`;
   const items = [
-    { key: base, label: "Public page", icon: Globe, href: base },
-    ...(admin ? [{ key: `${base}/queue`, label: "Queue", icon: ShieldCheck, href: `${base}/queue` }] : []),
-    { key: `${base}/deck`, label: "Deck", icon: Tv, href: `${base}/deck` },
+    { key: base, label: t.board.publicPage, icon: Globe, href: base },
+    ...(queue ? [{ key: `${base}/queue`, label: t.board.queue, icon: ShieldCheck, href: `${base}/queue` }] : []),
+    ...(deck ? [{ key: `${base}/deck`, label: t.board.deck, icon: Tv, href: `${base}/deck` }] : []),
   ];
-  return <Segmented kind="nav" tone="accent" ariaLabel="Board" items={items} active={path} className="w-full sm:w-auto" />;
+  return <Segmented kind="nav" tone="accent" ariaLabel={t.header.boards} items={items} active={path} className="w-full sm:w-auto" />;
 }

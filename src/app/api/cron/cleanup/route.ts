@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { serverEnv, BUCKET } from "@/lib/env";
+import { serverEnv } from "@/lib/env";
+import { AUDIT_DAYS, BUCKET, REPORT_MAX_DAYS, REPORT_RESOLVED_DAYS } from "@/lib/limits";
 import { safeEqual } from "@/lib/crypto";
 import { removeObjects } from "@/lib/media";
 import { LEGAL } from "@/config/legal";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +50,22 @@ export async function GET(req: Request) {
     expiredCount++;
   }
 
+  // Problemas reportados: se borran 30 días después de resolverlos, y como mucho al año
+  const day = 24 * 3600 * 1000;
+  const { data: r1 } = await db.from("problem_reports").delete().eq("status", "resolved")
+    .lt("resolved_at", new Date(Date.now() - REPORT_RESOLVED_DAYS * day).toISOString()).select("id");
+  const { data: r2 } = await db.from("problem_reports").delete()
+    .lt("created_at", new Date(Date.now() - REPORT_MAX_DAYS * day).toISOString()).select("id");
+  const reports = (r1?.length ?? 0) + (r2?.length ?? 0);
+
+  // Registro de auditoría: se conserva 365 días (la base de datos impide borrar antes)
+  const { data: a } = await db.from("audit_log").delete().lt("created_at", new Date(Date.now() - AUDIT_DAYS * day).toISOString()).select("id");
+
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   await db.from("rate_limits").delete().lt("window_start", dayAgo);
 
-  return NextResponse.json({ ok: true, removed, expired: expiredCount });
+  if (removed || expiredCount || reports || a?.length) {
+    await audit("system.cleanup", { actor: { type: "system" }, details: { incomplete: removed, expired: expiredCount, reports, auditEntries: a?.length ?? 0 } });
+  }
+  return NextResponse.json({ ok: true, removed, expired: expiredCount, reports });
 }

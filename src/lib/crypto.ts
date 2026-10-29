@@ -62,25 +62,41 @@ export async function hashPassword(password: string): Promise<string> {
  * Clave derivada de SESSION_SECRET con HKDF: si cambias SESSION_SECRET, las contraseñas
  * siguen funcionando para entrar (se comprueban con el hash), pero ya no se podrán copiar.
  */
-function boardKey(): Buffer {
-  return Buffer.from(hkdfSync("sha256", serverEnv.sessionSecret, "room-review", "board-password-v1", 32));
+type SecretPurpose = "board-password-v1" | "totp-v1";
+
+function secretKey(purpose: SecretPurpose): Buffer {
+  return Buffer.from(hkdfSync("sha256", serverEnv.sessionSecret, "room-review", purpose, 32));
 }
 
-export function encryptSecret(plain: string): string {
+export function encryptSecret(plain: string, purpose: SecretPurpose = "board-password-v1"): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", boardKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", secretKey(purpose), iv);
   const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   return `v1:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${data.toString("base64url")}`;
 }
 
-export function decryptSecret(stored: string): string | null {
+export function decryptSecret(stored: string, purpose: SecretPurpose = "board-password-v1"): string | null {
   try {
     const [v, iv, tag, data] = stored.split(":");
     if (v !== "v1" || !iv || !tag || !data) return null;
-    const d = createDecipheriv("aes-256-gcm", boardKey(), Buffer.from(iv, "base64url"));
+    const d = createDecipheriv("aes-256-gcm", secretKey(purpose), Buffer.from(iv, "base64url"));
     d.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([d.update(Buffer.from(data, "base64url")), d.final()]).toString("utf8");
   } catch {
     return null;
   }
+}
+
+const PW_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+
+/** Contraseña aleatoria generada en el servidor: 4 bloques de 5 (≈ 99 bits), p. ej. "k7pqm-3xz9r-twh4f-dn2ka" */
+export function generateServerPassword(): string {
+  const out: string[] = [];
+  // Muestreo por rechazo: sin sesgo de módulo
+  while (out.length < 20) {
+    for (const b of randomBytes(32)) {
+      if (b < 248 && out.length < 20) out.push(PW_ALPHABET[b % 31]);
+    }
+  }
+  return [0, 5, 10, 15].map((i) => out.slice(i, i + 5).join("")).join("-");
 }

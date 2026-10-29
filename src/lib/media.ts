@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "./supabase-admin";
-import { BUCKET } from "./env";
+import { BUCKET } from "./limits";
 
 /** Genera URLs firmadas temporales para un conjunto de rutas privadas. */
 export async function signPaths(paths: string[], expiresIn = 3600): Promise<Map<string, string>> {

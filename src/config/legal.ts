@@ -11,31 +11,19 @@
  *  POLICY_VERSION: así cada entrega guarda qué versión aceptó.
  */
 export const LEGAL = {
-  /** Nombre o razón social del responsable (se muestra en la web: escríbelo tal cual) */
-  controllerName: "[YOUR NAME OR COMPANY]",
-  /** NIF / CIF / ID fiscal (opcional para particulares, obligatorio para empresas) */
-  controllerTaxId: "",
-  /** Dirección postal o, como mínimo, ciudad y país */
-  controllerAddress: "[CITY, COUNTRY]",
-  /** Email para ejercer derechos (acceso, borrado…). Debe estar operativo. */
-  contactEmail: "[privacy@yourdomain.com]",
-  /** Nombre de la web (marca general). Cada board tiene además su propio streamer. */
-  projectName: "Stream Reviews",
+  controllerName: process.env.NEXT_PUBLIC_LEGAL_NAME || "[YOUR NAME OR COMPANY]",
+  controllerTaxId: process.env.NEXT_PUBLIC_LEGAL_TAX_ID || "",
+  controllerAddress: process.env.NEXT_PUBLIC_LEGAL_ADDRESS || "[CITY, COUNTRY]",
+  contactEmail: process.env.NEXT_PUBLIC_LEGAL_EMAIL || "[privacy@yourdomain.com]",
+  projectName: process.env.NEXT_PUBLIC_PROJECT_NAME || "Stream Reviews",
+  databaseRegion: process.env.NEXT_PUBLIC_DB_REGION || "European Union (Frankfurt, Germany)",
 
-  /** Autoridad de control principal (España: AEPD) */
-  authorityName: "Spanish Data Protection Agency (AEPD)",
+  // Esto se queda en el código: no es personal y cambia junto con la política
+  authorityName: "AEPD (Agencia Española de Protección de Datos)",
   authorityUrl: "https://www.aepd.es",
-
-  /** Región de Supabase elegida al crear el proyecto (recomendado: una región de la UE) */
-  databaseRegion: "European Union (Frankfurt, Germany)",
-
-  /** Edad mínima para enviar. 18 evita tratar datos de menores. */
   minAge: 18,
-  /** Días tras el envío en que la entrega (datos y fotos) se borra automáticamente */
   retentionDays: 90,
-
-  policyVersion: "2026-10-29.4",
-  policyUpdated: "29 October 2026",
+  policyVersion: "2026-10-29.5",
 } as const;
 
 /** true si aún quedan campos por rellenar: se muestra un aviso en la web. */

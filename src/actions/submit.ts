@@ -1,13 +1,13 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { submissionSchema, uuidSchema, type SubmissionInput } from "@/lib/validation";
+import { firstError, submissionSchema, uuidSchema, type SubmissionInput } from "@/lib/validation";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { rateLimit } from "@/lib/ratelimit";
 import { clientIp, clientKey } from "@/lib/request";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { randomToken, sha256, safeEqual } from "@/lib/crypto";
-import { BUCKET, MAX_FILE_BYTES } from "@/lib/env";
+import { BUCKET, MAX_FILE_BYTES } from "@/lib/limits";
 import { LEGAL } from "@/config/legal";
 import { newDeletionCode } from "@/lib/deletion-code";
 import { removeObjects, sniffImageType } from "@/lib/media";
@@ -19,22 +19,22 @@ type InitResult =
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 h para terminar la subida
 
-/** Paso 1: valida, crea la entrega (estado "uploading") y devuelve URLs firmadas de un uso. */
+/** Los errores son claves del diccionario (sección "errors"). Paso 1: valida, crea la entrega (estado "uploading") y devuelve URLs firmadas de un uso. */
 export async function initSubmission(input: SubmissionInput): Promise<InitResult> {
   const parsed = submissionSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid data" };
+    return { ok: false, error: firstError(parsed.error) };
   }
   const data = parsed.data;
 
   if (!(await rateLimit(await clientKey("submit"), 5, 3600))) {
-    return { ok: false, error: "Too many submissions from your connection. Please try again later." };
+    return { ok: false, error: "tooManySubmissions" };
   }
   if (!(await rateLimit("submit:global", 100, 3600))) {
-    return { ok: false, error: "The service is busy. Please try again in a few minutes." };
+    return { ok: false, error: "serviceBusy" };
   }
-  if (!(await verifyTurnstile(data.turnstileToken, await clientIp()))) {
-    return { ok: false, error: "Anti-bot check failed. Reload the page and try again." };
+  if (!(await verifyTurnstile(data.turnstileToken, await clientIp(), "submit"))) {
+    return { ok: false, error: "captchaFailed" };
   }
 
   const db = supabaseAdmin();
@@ -62,10 +62,10 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
   });
   if (error) {
     if (error.hint === "BOARD_CLOSED" || error.message?.includes("board closed")) {
-      return { ok: false, error: "This board isn't accepting submissions right now." };
+      return { ok: false, error: "boardClosed" };
     }
     console.error("create_submission", error.message);
-    return { ok: false, error: "Could not create the submission. Please try again." };
+    return { ok: false, error: "db" };
   }
 
   const uploads: { path: string; token: string }[] = [];
@@ -74,7 +74,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
     if (signErr || !signed) {
       console.error("createSignedUploadUrl", signErr?.message);
       await db.from("submissions").delete().eq("id", id);
-      return { ok: false, error: "Could not prepare the upload. Please try again." };
+      return { ok: false, error: "db" };
     }
     uploads.push({ path: signed.path, token: signed.token });
   }
@@ -87,10 +87,10 @@ type FinalizeResult = { ok: true } | { ok: false; error: string };
 /** Paso 2: comprueba en el servidor que los archivos subidos son imágenes válidas y publica la entrega como "pending". */
 export async function finalizeSubmission(submissionId: string, finalizeToken: string): Promise<FinalizeResult> {
   if (!uuidSchema.safeParse(submissionId).success || typeof finalizeToken !== "string" || finalizeToken.length > 100) {
-    return { ok: false, error: "Invalid request" };
+    return { ok: false, error: "invalidData" };
   }
   if (!(await rateLimit(await clientKey("finalize"), 20, 3600))) {
-    return { ok: false, error: "Too many requests. Please try again later." };
+    return { ok: false, error: "rateLimited" };
   }
 
   const db = supabaseAdmin();
@@ -102,11 +102,11 @@ export async function finalizeSubmission(submissionId: string, finalizeToken: st
 
   const tokenHash = sha256(finalizeToken);
   if (!sub || sub.status !== "uploading" || !sub.upload_token_hash || !safeEqual(sub.upload_token_hash, tokenHash)) {
-    return { ok: false, error: "Submission not found or already sent" };
+    return { ok: false, error: "submissionGone" };
   }
   if (Date.now() - new Date(sub.created_at).getTime() > UPLOAD_WINDOW_MS) {
     await discard(submissionId);
-    return { ok: false, error: "The upload expired. Please try again." };
+    return { ok: false, error: "uploadExpired" };
   }
 
   const { data: mediaRows } = await db
@@ -130,7 +130,7 @@ export async function finalizeSubmission(submissionId: string, finalizeToken: st
     .select("id");
 
   if (error || !updated || updated.length !== 1) {
-    return { ok: false, error: "This submission was already sent" };
+    return { ok: false, error: "submissionGone" };
   }
   return { ok: true };
 }
@@ -140,27 +140,27 @@ async function validateUploadedFiles(
   rows: { storage_path: string; content_type: string }[],
   expected: number,
 ): Promise<string | null> {
-  if (rows.length !== expected) return "Some photos are missing";
+  if (rows.length !== expected) return "uploadIncomplete";
   const storage = supabaseAdmin().storage.from(BUCKET);
 
   const { data: listed, error } = await storage.list(submissionId, { limit: 20 });
-  if (error) return "Could not verify the photos";
+  if (error) return "uploadIncomplete";
   const byName = new Map((listed ?? []).map((o) => [`${submissionId}/${o.name}`, o]));
-  if (byName.size !== expected) return "The photos were not uploaded correctly";
+  if (byName.size !== expected) return "uploadIncomplete";
 
   for (const row of rows) {
     const obj = byName.get(row.storage_path);
     const size = Number((obj?.metadata as { size?: number } | null)?.size ?? 0);
-    if (!obj || size <= 0 || size > MAX_FILE_BYTES) return "A photo is invalid or too large";
+    if (!obj || size <= 0 || size > MAX_FILE_BYTES) return "uploadInvalid";
 
     // Leer solo los primeros bytes para comprobar que de verdad es una imagen
     const { data: signed } = await storage.createSignedUrl(row.storage_path, 60);
-    if (!signed?.signedUrl) return "Could not verify the photos";
+    if (!signed?.signedUrl) return "uploadIncomplete";
     const res = await fetch(signed.signedUrl, { headers: { Range: "bytes=0-15" }, cache: "no-store" });
-    if (!res.ok) return "Could not verify the photos";
+    if (!res.ok) return "uploadIncomplete";
     const head = new Uint8Array(await res.arrayBuffer()).slice(0, 16);
     const real = sniffImageType(head);
-    if (!real || real !== row.content_type) return "Only JPEG, PNG or WebP images are accepted";
+    if (!real || real !== row.content_type) return "uploadInvalid";
   }
   return null;
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Monitor, Sun, Moon } from "lucide-react";
 import Segmented from "./Segmented";
 import { THEME_KEY, type ThemeMode } from "@/lib/theme";
+import { useT } from "@/i18n/client";
 
 function apply(mode: ThemeMode) {
   const root = document.documentElement;
@@ -16,6 +17,7 @@ function apply(mode: ThemeMode) {
 }
 
 export default function ThemeToggle() {
+  const t = useT();
   const [mode, setMode] = useState<ThemeMode | null>(null);
 
   // Se lee tras montar (en el servidor no hay localStorage): hasta entonces, un hueco del mismo tamaño
@@ -38,14 +40,14 @@ export default function ThemeToggle() {
 
   return (
     <Segmented
-      ariaLabel="Colour theme"
+      ariaLabel={t.theme.label}
       iconOnly
       active={mode}
       onSelect={change}
       items={[
-        { key: "system", label: "Match system", icon: Monitor },
-        { key: "light", label: "Light", icon: Sun },
-        { key: "dark", label: "Dark", icon: Moon },
+        { key: "system", label: t.theme.system, icon: Monitor },
+        { key: "light", label: t.theme.light, icon: Sun },
+        { key: "dark", label: t.theme.dark, icon: Moon },
       ]}
     />
   );

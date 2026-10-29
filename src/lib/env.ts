@@ -19,8 +19,3 @@ export const serverEnv = {
   get cronSecret() { return process.env.CRON_SECRET?.trim() || ""; },
 };
 
-export const BUCKET = "room-media";
-export const MAX_FILES = 5;
-export const MAX_FILE_BYTES = 6 * 1024 * 1024; // debe coincidir con el bucket (schema.sql)
-export const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-export type AllowedType = (typeof ALLOWED_TYPES)[number];

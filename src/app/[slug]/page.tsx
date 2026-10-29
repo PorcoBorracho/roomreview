@@ -4,32 +4,26 @@ import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import SubmitForm from "@/components/SubmitForm";
 import { getBoardBySlug } from "@/lib/boards";
-import { canViewBoard, getSession } from "@/lib/session";
+import { boardAccess } from "@/lib/session";
 import { LEGAL } from "@/config/legal";
-import { platformLabel } from "@/lib/platforms";
+import { getT } from "@/i18n/server";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const board = await getBoardBySlug((await params).slug);
-  if (!board || !board.isActive) return { title: "Not found", robots: { index: false } };
+  if (!board || !board.isActive) return { title: (await getT()).meta.notFound, robots: { index: false } };
   return {
-    title: `${board.title} · ${board.streamerName || LEGAL.projectName}`,
+    title: { absolute: `${board.title} · ${board.streamerName || LEGAL.projectName}` },
     description: board.description.slice(0, 160) || undefined,
   };
 }
 
-const STEPS = [
-  ["Add your photos", "Up to 5 photos. Location data is removed automatically."],
-  ["Review and confirm", "Check the privacy list and agree to the terms. Nothing is sent before that."],
-  ["A moderator reviews it", "Approved submissions are shown live on stream."],
-] as const;
-
 export default async function BoardPage({ params }: { params: Promise<{ slug: string }> }) {
   const board = await getBoardBySlug((await params).slug);
-  const session = await getSession();
   // Un board inactivo no existe para el público; el equipo puede previsualizarlo
-  if (!board || (!board.isActive && !canViewBoard(session, board.id))) notFound();
+  if (!board || (!board.isActive && !(await boardAccess(board.id)).view)) notFound();
+  const t = await getT();
 
   const open = board.isActive && board.submissionsOpen;
 
@@ -39,8 +33,8 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
         <h1 className="text-4xl leading-[1.05] font-extrabold tracking-tight text-strong sm:text-5xl xl:text-6xl">{board.title}</h1>
         {board.streamerName && (
           <p className="mt-4 text-[15px] text-muted">
-            Hosted by <span className="font-semibold text-ink">{board.streamerName}</span>
-            {board.platform !== "other" && <> · live on {platformLabel(board.platform)}</>}
+            {t.board.hostedBy(board.streamerName)}
+            {board.platform !== "other" && t.board.liveOn(t.platforms[board.platform])}
           </p>
         )}
         {board.description && (
@@ -49,7 +43,7 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
 
         {open && (
           <ol className="mt-10 hidden max-w-md space-y-5 lg:block">
-            {STEPS.map(([title, text], i) => (
+            {t.board.steps.map(([title, text], i) => (
               <li key={title} className="flex gap-4">
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-line text-[13px] font-semibold text-muted tabular-nums">{i + 1}</span>
                 <div>
@@ -62,9 +56,9 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
         )}
 
         <p className="mt-10 hidden text-[13px] text-subtle lg:block">
-          <Link href="/privacy" className="hover:text-strong">Privacy & photo terms</Link>
+          <Link href="/privacy" className="hover:text-strong">{t.footer.privacy}</Link>
           <span className="mx-2">·</span>
-          <Link href="/delete" className="hover:text-strong">Delete a submission</Link>
+          <Link href="/delete" className="hover:text-strong">{t.board.deleteASubmission}</Link>
         </p>
       </section>
 
@@ -76,10 +70,8 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
             <span className="mx-auto flex size-11 items-center justify-center rounded-xl bg-raised text-muted">
               <Lock className="size-5" />
             </span>
-            <h2 className="mt-4 text-lg font-semibold text-strong">Submissions are closed</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
-              This board isn&apos;t accepting new submissions right now. Check back later.
-            </p>
+            <h2 className="mt-4 text-lg font-semibold text-strong">{t.board.closedTitle}</h2>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-muted">{t.board.closedText}</p>
           </div>
         )}
       </div>

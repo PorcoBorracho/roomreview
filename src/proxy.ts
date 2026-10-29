@@ -1,23 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { hkdfSync } from "node:crypto";
 import { jwtVerify } from "jose";
 import { buildCsp } from "@/lib/csp";
 
 /**
  * Se ejecuta en cada petición de página:
  *  1. Genera un nonce y una CSP estricta para esa petición.
- *  2. Primera barrera de acceso: sin sesión válida no se llega al panel, a las colas ni a los decks.
- *     (Cada página vuelve a comprobar el rol y, en el deck, que el streamer tenga acceso a ESE board.)
+ *  2. Primera barrera de acceso: sin una sesión firmada del tipo adecuado no se llega a las páginas privadas.
+ *     Cada página vuelve a comprobar los permisos exactos contra la base de datos.
  */
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = buildCsp(nonce);
 
-  const isProtected = pathname === "/" || /^\/[^/]+\/(queue|deck)\/?$/.test(pathname);
-  if (isProtected && !(await allowed(req, pathname))) {
+  const need = requirement(pathname);
+  if (need && !(await allowed(req, need))) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname.replace(/\/$/, ""))}`;
+    const clean = pathname.replace(/\/$/, "") || "/";
+    url.search = clean === "/" ? "" : `?next=${encodeURIComponent(clean)}`;
     const res = NextResponse.redirect(url);
     res.headers.set("Content-Security-Policy", csp);
     return res;
@@ -32,18 +34,28 @@ export async function proxy(req: NextRequest) {
   return res;
 }
 
-async function allowed(req: NextRequest, pathname: string): Promise<boolean> {
-  const adminOnly = pathname === "/" || /\/queue\/?$/.test(pathname);
+type Need = "account" | "moderate" | "view";
+
+function requirement(pathname: string): Need | null {
+  if (pathname === "/" || /^\/(admins|problems|account|audit)(\/.*)?$/.test(pathname)) return "account";
+  if (/^\/[^/]+\/queue\/?$/.test(pathname)) return "moderate";
+  if (/^\/[^/]+\/deck\/?$/.test(pathname)) return "view";
+  return null;
+}
+
+async function allowed(req: NextRequest, need: Need): Promise<boolean> {
   const name = process.env.NODE_ENV === "production" ? "__Host-rr_session" : "rr_session";
   const token = req.cookies.get(name)?.value;
-  if (!token || !process.env.SESSION_SECRET) return false;
+  const secret = process.env.SESSION_SECRET;
+  if (!token || !secret) return false;
   try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.SESSION_SECRET), {
-      algorithms: ["HS256"],
-      audience: "room-review",
-      issuer: "room-review",
-    });
-    return adminOnly ? payload.role === "admin" : payload.role === "admin" || payload.role === "streamer";
+    const key = new Uint8Array(hkdfSync("sha256", secret.trim(), "room-review", "session-v2", 32));
+    const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"], audience: "session-v2", issuer: "room-review" });
+    const hasAccount = !!payload.a;
+    const grants = Array.isArray(payload.g) ? (payload.g as { k?: string }[]) : [];
+    if (need === "account") return hasAccount;
+    if (need === "moderate") return hasAccount || grants.some((g) => g.k === "m");
+    return hasAccount || grants.length > 0;
   } catch {
     return false;
   }

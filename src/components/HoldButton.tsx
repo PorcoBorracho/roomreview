@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useT } from "@/i18n/client";
 
 /**
  * Pulsar y mantener para confirmar (sin ventana de confirmación del navegador).
@@ -18,6 +19,7 @@ export default function HoldButton({
   className?: string;
   fillClassName?: string;
 }) {
+  const t = useT();
   const [holding, setHolding] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -48,7 +50,7 @@ export default function HoldButton({
       type="button"
       disabled={disabled}
       aria-label={`${label} (press and hold)`}
-      title="Press and hold"
+      title={t.common.pressAndHold}
       onPointerDown={(e) => { if (e.button === 0) start(); }}
       onPointerUp={cancel}
       onPointerLeave={cancel}

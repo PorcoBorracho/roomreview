@@ -6,10 +6,15 @@ import { ChevronLeft, ChevronRight, Maximize2, Tv2, RefreshCw, MapPin, EyeOff, E
 import type { DeckSubmission } from "@/lib/types";
 import Lightbox from "./Lightbox";
 import ZoomableImage, { type ZoomHandle } from "./ZoomableImage";
+import { useLocale, useT } from "@/i18n/client";
+import { formatDate } from "@/i18n/config";
 
 const wrap = (i: number, n: number) => (n === 0 ? 0 : ((i % n) + n) % n);
 
 export default function StreamerDeck({ submissions }: { submissions: DeckSubmission[] }) {
+  const t = useT();
+  const d = t.deck;
+  const locale = useLocale();
   const router = useRouter();
   const [subIdx, setSubIdx] = useState(0);
   const [mediaIdx, setMediaIdx] = useState(0);
@@ -30,8 +35,8 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
 
   // Las URLs firmadas caducan: refrescamos los datos cada 30 min
   useEffect(() => {
-    const t = setInterval(() => router.refresh(), 30 * 60 * 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => router.refresh(), 30 * 60 * 1000);
+    return () => clearInterval(timer);
   }, [router]);
   useEffect(() => setRefreshing(false), [submissions]);
 
@@ -61,26 +66,26 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
     <section>
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-strong sm:text-3xl">Deck</h1>
-          <p className="mt-1 text-sm text-muted">Approved submissions, oldest first.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-strong sm:text-3xl">{d.title}</h1>
+          <p className="mt-1 text-sm text-muted">{d.subtitle}</p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => { setRefreshing(true); router.refresh(); }} aria-label="Reload approved submissions" title="Reload"
+          <button onClick={() => { setRefreshing(true); router.refresh(); }} aria-label={d.reload} title={d.reload}
             className="pressable flex size-10 items-center justify-center rounded-xl border border-line text-muted hover:border-line-strong hover:text-strong">
             <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
           <div className="flex h-10 items-center rounded-xl border border-line bg-well p-1">
-            <button onClick={() => changeSub(-1)} disabled={n < 2} aria-label="Previous submission"
+            <button onClick={() => changeSub(-1)} disabled={n < 2} aria-label={d.prevSubmission}
               className="pressable flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-muted hover:bg-raised hover:text-strong disabled:opacity-40">
-              <ChevronLeft className="size-4" /><span className="hidden sm:inline">Prev</span>
+              <ChevronLeft className="size-4" /><span className="hidden sm:inline">{t.common.prev}</span>
             </button>
             <span className="min-w-[4.5rem] px-2 text-center text-[13px] font-semibold tabular-nums text-strong" aria-live="polite">
-              {n ? s + 1 : 0} <span className="font-normal text-subtle">of</span> {n}
+              {n ? s + 1 : 0} <span className="font-normal text-subtle">{t.common.of}</span> {n}
             </span>
-            <button onClick={() => changeSub(1)} disabled={n < 2} aria-label="Next submission"
+            <button onClick={() => changeSub(1)} disabled={n < 2} aria-label={d.nextSubmission}
               className="pressable flex h-8 items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-muted hover:bg-raised hover:text-strong disabled:opacity-40">
-              <span className="hidden sm:inline">Next</span><ChevronRight className="size-4" />
+              <span className="hidden sm:inline">{t.common.next}</span><ChevronRight className="size-4" />
             </button>
           </div>
         </div>
@@ -88,26 +93,26 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
 
       <p className="mt-4 flex items-start gap-2 text-[13px] leading-relaxed text-subtle">
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-text" />
-        Check each photo before showing it. If you spot a face, name, address, screen or anything personal, press <Kbd>B</Kbd> to blur it instantly and skip it.
+        <span>{d.reminder(<Kbd>B</Kbd>)}</span>
       </p>
 
       {!sub || !media ? (
         <div className="mt-6 rounded-3xl border border-dashed border-line px-6 py-24 text-center">
           <Tv2 className="mx-auto size-9 text-subtle" />
-          <h3 className="mt-3 text-base font-semibold text-strong">No approved submissions yet</h3>
-          <p className="mx-auto mt-1 max-w-sm text-sm text-muted">Submissions appear here once a moderator approves them. Use reload to check for new ones.</p>
+          <h3 className="mt-3 text-base font-semibold text-strong">{d.emptyTitle}</h3>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted">{d.emptyText}</p>
         </div>
       ) : (
         <div className="mt-6 flex flex-col overflow-hidden rounded-3xl border border-line bg-black shadow-float lg:h-[calc(100dvh-15rem)] lg:min-h-[560px] lg:flex-row">
           <div className={`relative flex min-h-[55vh] flex-1 items-center justify-center bg-stage p-3 sm:p-5 lg:min-h-0 ${blurred ? "privacy-blur" : ""}`}>
             <span className="pointer-events-none absolute top-4 left-4 z-10 rounded-lg bg-black/70 px-2.5 py-1 text-xs font-semibold tabular-nums text-white backdrop-blur-md">
-              Photo {mi + 1} / {m}
+              {d.photo(mi + 1, m)}
             </span>
 
             <ZoomableImage
               ref={zoom}
               src={media.url}
-              alt={`Submission by @${sub.username}, photo ${mi + 1}`}
+              alt={d.alt(sub.username, mi + 1)}
               className="absolute inset-0"
               imgClassName="max-h-[calc(100%-2.5rem)] max-w-[calc(100%-2.5rem)] rounded-xl object-contain"
               controlsClassName="bottom-4 left-4"
@@ -116,11 +121,11 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
 
             {m > 1 && (
               <>
-                <button onClick={() => changeMedia(-1)} aria-label="Previous photo"
+                <button onClick={() => changeMedia(-1)} aria-label={d.prevPhoto}
                   className="pressable absolute top-1/2 left-3 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-black/70 text-white backdrop-blur-md hover:bg-accent hover:text-on-accent">
                   <ChevronLeft className="size-5" />
                 </button>
-                <button onClick={() => changeMedia(1)} aria-label="Next photo"
+                <button onClick={() => changeMedia(1)} aria-label={d.nextPhoto}
                   className="pressable absolute top-1/2 right-3 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-black/70 text-white backdrop-blur-md hover:bg-accent hover:text-on-accent">
                   <ChevronRight className="size-5" />
                 </button>
@@ -130,11 +135,11 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
             <button onClick={() => setBlurred((v) => !v)} aria-pressed={blurred}
               className={`pressable absolute right-36 bottom-4 z-10 flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-semibold backdrop-blur-md ${
                 blurred ? "border-warning/60 bg-warning text-black" : "border-white/10 bg-black/70 text-white hover:bg-white/15"}`}>
-              {blurred ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />} {blurred ? "Unblur" : "Blur"}
+              {blurred ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />} {blurred ? d.unblur : d.blur}
             </button>
             <button onClick={() => setFullscreen(true)}
               className="pressable absolute right-4 bottom-4 flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-black/70 px-3 text-[13px] font-semibold text-white backdrop-blur-md hover:bg-accent hover:text-on-accent">
-              <Maximize2 className="size-3.5" /> Fullscreen
+              <Maximize2 className="size-3.5" /> {d.fullscreen}
             </button>
           </div>
 
@@ -149,15 +154,15 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
 
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
               <div>
-                <h4 className="text-xs font-semibold text-subtle">Description</h4>
+                <h4 className="text-xs font-semibold text-subtle">{d.description}</h4>
                 <p className="mt-2 text-[15px] leading-relaxed whitespace-pre-line break-words text-ink">{sub.description}</p>
               </div>
               {m > 1 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-subtle">Photos</h4>
+                  <h4 className="text-xs font-semibold text-subtle">{d.photos}</h4>
                   <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                     {sub.media.map((item, i) => (
-                      <button key={item.id} onClick={() => setMediaIdx(i)} aria-label={`Show photo ${i + 1}`} aria-current={i === mi}
+                      <button key={item.id} onClick={() => setMediaIdx(i)} aria-label={d.showPhoto(i + 1)} aria-current={i === mi}
                         className={`pressable size-16 shrink-0 overflow-hidden rounded-xl border-2 bg-black ${
                           i === mi ? "border-highlight" : "border-transparent opacity-55 hover:opacity-100"}`}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -170,9 +175,9 @@ export default function StreamerDeck({ submissions }: { submissions: DeckSubmiss
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-line px-6 py-4 text-xs text-subtle">
-              <time className="whitespace-nowrap" dateTime={sub.submittedAt}>Sent {new Date(sub.submittedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</time>
+              <time className="whitespace-nowrap" dateTime={sub.submittedAt}>{d.sent(formatDate(locale, sub.submittedAt))}</time>
               <span className="hidden items-center gap-1 lg:flex">
-                <Kbd>←</Kbd><Kbd>→</Kbd> photos <Kbd>↑</Kbd><Kbd>↓</Kbd> entries <Kbd>+</Kbd><Kbd>−</Kbd> zoom <Kbd>B</Kbd> blur <Kbd>F</Kbd>
+                <Kbd>←</Kbd><Kbd>→</Kbd> {d.keys.photos} <Kbd>↑</Kbd><Kbd>↓</Kbd> {d.keys.entries} <Kbd>+</Kbd><Kbd>−</Kbd> {d.keys.zoom} <Kbd>B</Kbd> {d.keys.blur} <Kbd>F</Kbd>
               </span>
             </div>
           </aside>

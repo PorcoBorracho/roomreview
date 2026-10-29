@@ -3,10 +3,12 @@ import { requireBoardPage } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getBoardBySlug } from "@/lib/boards";
 import { signPaths } from "@/lib/media";
+import { getT } from "@/i18n/server";
 import StreamerDeck from "@/components/StreamerDeck";
 import type { DeckSubmission } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const generateMetadata = async () => ({ title: (await getT()).deck.title, robots: { index: false } });
 
 type Row = {
   id: string; username: string; country: string; description: string; submitted_at: string;
@@ -17,7 +19,7 @@ export default async function DeckPage({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const board = await getBoardBySlug(slug);
   if (!board) notFound();
-  await requireBoardPage(board.id, `/${slug}/deck`);
+  await requireBoardPage(board.id, "view", `/${slug}/deck`);
 
   // Nunca se envía el email al navegador en esta vista
   const { data, error } = await supabaseAdmin()

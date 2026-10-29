@@ -33,6 +33,11 @@ export type Board = {
   createdAt: string;
   updatedAt: string;
   hasStreamerPassword: boolean;
+  hasModeratorPassword: boolean;
+  ownerId: string | null;
+  ownerName: string | null;
+  /** Admins con los que se ha compartido */
+  members: { id: string; username: string }[];
 };
 
 export type BoardWithStats = Board & { pending: number; approved: number };

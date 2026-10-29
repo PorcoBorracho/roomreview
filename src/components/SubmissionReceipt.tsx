@@ -4,8 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { CheckCircle2, Copy, Check, Download, KeyRound } from "lucide-react";
 import { LEGAL } from "@/config/legal";
+import { useT } from "@/i18n/client";
 
 export default function SubmissionReceipt({ code, onDone }: { code: string; onDone: () => void }) {
+  const t = useT();
+  const r = t.receipt;
+  const link = "font-medium text-accent-text underline underline-offset-4";
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -18,8 +22,8 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
   }
 
   function download() {
-    const text = `${LEGAL.projectName}\n\nYour deletion code: ${code}\n\nTo delete your submission at any time, go to ${location.origin}/delete and enter this code.\nSubmissions are deleted automatically after ${LEGAL.retentionDays} days.\n`;
-    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const text = r.fileText(LEGAL.projectName, code, `${location.origin}/delete`, LEGAL.retentionDays);
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: "deletion-code.txt" });
     a.click();
     URL.revokeObjectURL(url);
@@ -31,21 +35,16 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
       <div className="flex items-start gap-3">
         <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-success-text" />
         <div>
-          <h3 className="text-lg font-semibold text-strong">Submission received</h3>
-          <p className="mt-1 text-sm text-muted">
-            A moderator will review it. Nothing is shown on stream until it&apos;s approved.
-          </p>
+          <h3 className="text-lg font-semibold text-strong">{r.title}</h3>
+          <p className="mt-1 text-sm text-muted">{r.text}</p>
         </div>
       </div>
 
       <div className="rounded-xl border border-warning/40 bg-warning/[0.07] p-4">
         <p className="flex items-center gap-2 text-sm font-semibold text-warning-text">
-          <KeyRound className="size-4" /> Save your deletion code now
+          <KeyRound className="size-4" /> {r.saveCode}
         </p>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted">
-          It&apos;s the only way to delete your submission yourself. We don&apos;t store it in readable form, so it
-          can&apos;t be shown again.
-        </p>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted">{r.saveCodeText}</p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <code className="flex-1 rounded-lg border border-line bg-well px-3 py-2.5 text-center font-mono text-[15px] font-semibold tracking-wide text-strong select-all">
             {code}
@@ -53,26 +52,26 @@ export default function SubmissionReceipt({ code, onDone }: { code: string; onDo
           <div className="flex gap-2">
             <button type="button" onClick={copy}
               className="pressable flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold text-ink hover:border-line-strong sm:flex-none">
-              {copied ? <Check className="size-4 text-success-text" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
+              {copied ? <Check className="size-4 text-success-text" /> : <Copy className="size-4" />} {copied ? t.common.copied : t.common.copy}
             </button>
             <button type="button" onClick={download}
               className="pressable flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold text-ink hover:border-line-strong sm:flex-none">
-              {saved ? <Check className="size-4 text-success-text" /> : <Download className="size-4" />} Save .txt
+              {saved ? <Check className="size-4 text-success-text" /> : <Download className="size-4" />} {r.saveTxt}
             </button>
           </div>
         </div>
         <p className="mt-3 text-[13px] text-muted">
-          Use it on the{" "}
-          <Link href="/delete" className="font-medium text-accent-text underline underline-offset-4">delete my submission</Link>{" "}
-          page. Without it, use the{" "}
-          <Link href="/contact" className="font-medium text-accent-text underline underline-offset-4">contact page</Link>.
-          Submissions are deleted automatically after {LEGAL.retentionDays} days.
+          {r.useIt(
+            <Link href="/delete" className={link}>{r.deletePage}</Link>,
+            <Link href="/contact" className={link}>{r.contactPage}</Link>,
+            LEGAL.retentionDays,
+          )}
         </p>
       </div>
 
       <button type="button" onClick={onDone}
         className="pressable flex h-11 w-full items-center justify-center rounded-xl border border-line text-sm font-semibold text-muted hover:border-line-strong hover:text-strong">
-        I&apos;ve saved my code, submit another
+        {r.another}
       </button>
     </div>
   );

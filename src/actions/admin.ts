@@ -2,47 +2,62 @@
 
 import { revalidatePath } from "next/cache";
 import { uuidSchema } from "@/lib/validation";
-import { requireAdmin } from "@/lib/session";
+import { AuthError, requireBoard } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { removeObjects } from "@/lib/media";
+import { audit, boardRef } from "@/lib/audit";
 
+/** Los errores son claves del diccionario (sección "errors") */
 type Result = { ok: true } | { ok: false; error: string };
 
-async function guard(id: string): Promise<Result | null> {
+/**
+ * Moderación de entregas: quien gestiona el board (dueño, compartido, Site Admin)
+ * o tiene la contraseña de Board Admin de ESE board. Devuelve el board de la entrega.
+ */
+async function guard(id: string): Promise<{ boardId: string } | Result> {
+  if (!uuidSchema.safeParse(id).success) return { ok: false, error: "invalidData" };
+  const { data } = await supabaseAdmin().from("submissions").select("board_id").eq("id", id).maybeSingle();
+  // Sin revelar si existe a quien no tiene permiso: mismo error en ambos casos
+  if (!data) return { ok: false, error: "submissionGone" };
   try {
-    await requireAdmin();
-  } catch {
-    return { ok: false, error: "Unauthorized" };
+    await requireBoard(data.board_id as string, "moderate");
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: "unauthorized" };
+    throw e;
   }
-  if (!uuidSchema.safeParse(id).success) return { ok: false, error: "Invalid ID" };
-  return null;
+  return { boardId: data.board_id as string };
 }
 
-/** Cambio de estado condicional: si otro admin ya lo cambió, no se pisa. */
+/** Cambio de estado condicional: si otra persona ya lo cambió, no se pisa. */
 async function transition(id: string, from: "pending" | "approved", to: "pending" | "approved"): Promise<Result> {
+  const g = await guard(id);
+  if ("ok" in g) return g;
   const { data, error } = await supabaseAdmin()
     .from("submissions")
     .update({ status: to, reviewed_at: to === "approved" ? new Date().toISOString() : null })
     .eq("id", id)
+    .eq("board_id", g.boardId)
     .eq("status", from)
     .select("id");
-  if (error) return { ok: false, error: "Database error" };
-  if (!data || data.length === 0) return { ok: false, error: "Another admin already changed this submission. The list has been refreshed." };
+  if (error) return { ok: false, error: "db" };
+  if (!data || data.length === 0) return { ok: false, error: "submissionChanged" };
+  // Solo el id de la entrega: nunca datos de quien la envió
+  await audit(to === "approved" ? "submission.approved" : "submission.unapproved", { board: await boardRef(g.boardId), target: { id } });
   revalidatePath("/", "layout");
   return { ok: true };
 }
 
 export async function approveSubmission(id: string): Promise<Result> {
-  return (await guard(id)) ?? transition(id, "pending", "approved");
+  return transition(id, "pending", "approved");
 }
 
 export async function unapproveSubmission(id: string): Promise<Result> {
-  return (await guard(id)) ?? transition(id, "approved", "pending");
+  return transition(id, "approved", "pending");
 }
 
 export async function deleteSubmission(id: string): Promise<Result> {
   const g = await guard(id);
-  if (g) return g;
+  if ("ok" in g) return g;
   const db = supabaseAdmin();
 
   // Borrado atómico: la primera petición se lleva las rutas; las siguientes no encuentran nada
@@ -51,12 +66,14 @@ export async function deleteSubmission(id: string): Promise<Result> {
     .from("submissions")
     .delete()
     .eq("id", id)
+    .eq("board_id", g.boardId)
     .in("status", ["pending", "approved"])
     .select("id");
-  if (error) return { ok: false, error: "Database error" };
-  if (!deleted || deleted.length === 0) return { ok: false, error: "This submission no longer exists" };
+  if (error) return { ok: false, error: "db" };
+  if (!deleted || deleted.length === 0) return { ok: false, error: "submissionGone" };
 
   await removeObjects((media ?? []).map((m) => m.storage_path));
+  await audit("submission.deleted", { board: await boardRef(g.boardId), target: { id } });
   revalidatePath("/", "layout");
   return { ok: true };
 }

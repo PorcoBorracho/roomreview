@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check, type LucideIcon } from "lucide-react";
+import { useT } from "@/i18n/client";
 
 /** Botón que copia un texto (o el resultado de una función asíncrona) y confirma con un check. */
 export default function CopyButton({ getText, label, icon: Icon, className = "", onError }: {
@@ -11,6 +12,7 @@ export default function CopyButton({ getText, label, icon: Icon, className = "",
   className?: string;
   onError?: (message: string) => void;
 }) {
+  const t = useT();
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   async function run() {
     if (state === "busy") return;
@@ -23,13 +25,13 @@ export default function CopyButton({ getText, label, icon: Icon, className = "",
       setTimeout(() => setState("idle"), 1800);
     } catch {
       setState("idle");
-      onError?.("Couldn't copy. Your browser blocked clipboard access.");
+      onError?.(t.common.copyFailed);
     }
   }
   return (
     <button type="button" onClick={run} disabled={state === "busy"} className={`pressable ${className}`}>
       {state === "done" ? <Check className="size-4 shrink-0 text-success-text" /> : <Icon className="size-4 shrink-0" />}
-      <span>{state === "done" ? "Copied" : label}</span>
+      <span>{state === "done" ? t.common.copied : label}</span>
     </button>
   );
 }

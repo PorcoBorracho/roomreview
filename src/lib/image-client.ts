@@ -5,6 +5,13 @@ const TARGET_BYTES = 5.5 * 1024 * 1024;
 const ATTEMPTS: [number, number][] = [[2560, 0.88], [2560, 0.8], [2048, 0.8], [1600, 0.75]];
 export const CLIENT_MAX_INPUT_BYTES = 40 * 1024 * 1024;
 
+/** Error con un código traducible (diccionario: form.imageErrors) */
+export class ImageError extends Error {
+  constructor(public code: "notImage" | "tooLargeInput" | "unreadable" | "tooDetailed" | "noCanvas" | "failed", public fileName = "") {
+    super(code);
+  }
+}
+
 /**
  * Re-codifica la imagen en el navegador:
  *  - elimina TODOS los metadatos EXIF (incluida la ubicación GPS)
@@ -12,14 +19,14 @@ export const CLIENT_MAX_INPUT_BYTES = 40 * 1024 * 1024;
  *  - reduce a 2560 px como máximo (subidas más rápidas y caben en el plan gratis)
  */
 export async function processImage(file: File): Promise<Blob> {
-  if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed");
-  if (file.size > CLIENT_MAX_INPUT_BYTES) throw new Error("Image is too large (max 40 MB before compression)");
+  if (!file.type.startsWith("image/")) throw new ImageError("notImage");
+  if (file.size > CLIENT_MAX_INPUT_BYTES) throw new ImageError("tooLargeInput");
 
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
-    throw new Error(`"${file.name}" can't be read. Use JPEG, PNG or WebP.`);
+    throw new ImageError("unreadable", file.name);
   }
 
   try {
@@ -31,7 +38,7 @@ export async function processImage(file: File): Promise<Blob> {
   } finally {
     bitmap.close();
   }
-  throw new Error(`"${file.name}" is too detailed to compress under 6 MB. Try a smaller photo.`);
+  throw new ImageError("tooDetailed", file.name);
 }
 
 async function encode(bitmap: ImageBitmap, maxDim: number, quality: number): Promise<Blob> {
@@ -43,12 +50,12 @@ async function encode(bitmap: ImageBitmap, maxDim: number, quality: number): Pro
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Your browser can't process images");
+  if (!ctx) throw new ImageError("noCanvas");
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(bitmap, 0, 0, w, h);
 
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", quality));
-  if (!blob) throw new Error("Could not process the image");
+  if (!blob) throw new ImageError("failed");
   return blob;
 }
