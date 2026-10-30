@@ -272,8 +272,11 @@ p { text-wrap: pretty; }
   .legal-data dt { padding-top: 0.1rem; }
 }
 
-/* Difuminado de privacidad en directo: inmediato, sin transición */
-.privacy-blur .zoom-img { filter: blur(32px) saturate(0.6); }
+/* Difuminado de privacidad en directo: inmediato, sin transición (fotos, vídeos y miniaturas) */
+.privacy-blur .zoom-img,
+.privacy-blur video,
+.privacy-blur > img { filter: blur(32px) saturate(0.6); }
+.privacy-blur video { pointer-events: none; }
 
 /* Paso de revisión antes de enviar (dialog nativo: foco atrapado y Esc incluidos) */
 .review-dialog {

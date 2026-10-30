@@ -7,16 +7,16 @@ import { rateLimit } from "@/lib/ratelimit";
 import { clientIp, clientKey } from "@/lib/request";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { randomToken, sha256, safeEqual } from "@/lib/crypto";
-import { BUCKET, MAX_FILE_BYTES } from "@/lib/limits";
+import { BUCKET, MAX_FILE_BYTES, MAX_VIDEO_BYTES, isVideoType } from "@/lib/limits";
 import { LEGAL } from "@/config/legal";
 import { newDeletionCode } from "@/lib/deletion-code";
-import { removeObjects, sniffImageType } from "@/lib/media";
+import { removeObjects, sniffImageType, sniffVideoType } from "@/lib/media";
 
 type InitResult =
   | { ok: true; submissionId: string; finalizeToken: string; deletionCode: string; uploads: { path: string; token: string }[] }
   | { ok: false; error: string };
 
-const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4", "video/webm": "webm" };
 const UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 h para terminar la subida
 
 /** Los errores son claves del diccionario (sección "errors"). Paso 1: valida, crea la entrega (estado "uploading") y devuelve URLs firmadas de un uso. */
@@ -64,6 +64,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
     if (error.hint === "BOARD_CLOSED" || error.message?.includes("board closed")) {
       return { ok: false, error: "boardClosed" };
     }
+    if (error.hint === "VIDEOS_OFF") return { ok: false, error: "videosNotAllowed" };
     console.error("create_submission", error.message);
     return { ok: false, error: "db" };
   }
@@ -84,7 +85,7 @@ export async function initSubmission(input: SubmissionInput): Promise<InitResult
 
 type FinalizeResult = { ok: true } | { ok: false; error: string };
 
-/** Paso 2: comprueba en el servidor que los archivos subidos son imágenes válidas y publica la entrega como "pending". */
+/** Paso 2: comprueba en el servidor que los archivos subidos son imágenes o vídeos válidos y publica la entrega como "pending". */
 export async function finalizeSubmission(submissionId: string, finalizeToken: string): Promise<FinalizeResult> {
   if (!uuidSchema.safeParse(submissionId).success || typeof finalizeToken !== "string" || finalizeToken.length > 100) {
     return { ok: false, error: "invalidData" };
@@ -151,15 +152,16 @@ async function validateUploadedFiles(
   for (const row of rows) {
     const obj = byName.get(row.storage_path);
     const size = Number((obj?.metadata as { size?: number } | null)?.size ?? 0);
-    if (!obj || size <= 0 || size > MAX_FILE_BYTES) return "uploadInvalid";
+    const video = isVideoType(row.content_type);
+    if (!obj || size <= 0 || size > (video ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) return "uploadInvalid";
 
-    // Leer solo los primeros bytes para comprobar que de verdad es una imagen
+    // Leer solo los primeros bytes para comprobar que de verdad es una imagen o un vídeo
     const { data: signed } = await storage.createSignedUrl(row.storage_path, 60);
     if (!signed?.signedUrl) return "uploadIncomplete";
     const res = await fetch(signed.signedUrl, { headers: { Range: "bytes=0-15" }, cache: "no-store" });
     if (!res.ok) return "uploadIncomplete";
     const head = new Uint8Array(await res.arrayBuffer()).slice(0, 16);
-    const real = sniffImageType(head);
+    const real = video ? sniffVideoType(head) : sniffImageType(head);
     if (!real || real !== row.content_type) return "uploadInvalid";
   }
   return null;

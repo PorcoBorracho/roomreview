@@ -11,6 +11,7 @@ import { AuthError, requireAccount, requireBoard } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { removeObjects } from "@/lib/media";
 import { audit, boardRef } from "@/lib/audit";
+import { canUseStreamer } from "@/lib/boards";
 
 /** Los errores son claves del diccionario (sección "errors") */
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -26,45 +27,53 @@ async function guarded<R>(fn: () => Promise<R>): Promise<R | { ok: false; error:
   }
 }
 
-function dbError(e: { code?: string; message?: string }): string {
+function dbError(e: { code?: string; message?: string; hint?: string }): string {
   if (e.code === "23505") return "slugTaken";
+  if (e.hint === "NOT_STREAMER") return "streamerRequired";
   if (e.code === "23514") return "slugInvalid";
   console.error("boards", e.message);
   return "db";
 }
 
 const toRow = (b: ReturnType<typeof boardSchema.parse>) => ({
-  streamer_name: b.streamerName,
-  platform: b.platform,
+  streamer_id: b.streamerId,
   title: b.title,
   slug: b.slug,
   description: b.description,
   is_active: b.isActive,
   submissions_open: b.submissionsOpen,
   people_allowed: b.peopleAllowed,
+  blur_new: b.blurNew,
+  allow_videos: b.allowVideos,
 });
 
 const refresh = () => revalidatePath("/", "layout");
 
 /** Nombre de cada columna en el registro de auditoría (coincide con los campos del formulario) */
 const FIELD_NAMES = {
-  streamer_name: "streamerName",
-  platform: "platform",
+  streamer_id: "streamer",
   title: "title",
   slug: "slug",
   description: "description",
   is_active: "isActive",
   submissions_open: "submissionsOpen",
   people_allowed: "peopleAllowed",
+  blur_new: "blurNew",
+  allow_videos: "allowVideos",
 } as const;
 
-/** Cualquier cuenta puede crear boards; queda como dueña. */
+/**
+ * Crear un board para un streamer: el propio streamer (solo para sí mismo), un Admin (para los streamers
+ * de su equipo) o un Site Admin (para cualquier streamer aprobado). Quien lo crea queda como dueño.
+ */
 export async function createBoard(input: CreateBoardInput): Promise<Result<{ slug: string }>> {
   return guarded(async () => {
     const acc = await requireAccount();
     if (!(await rateLimit(`create-board:${acc.id}`, 30, 3600))) return { ok: false, error: "rateLimited" };
-    const parsed = createBoardSchema.safeParse(input);
+    // Un streamer siempre crea boards para sí mismo
+    const parsed = createBoardSchema.safeParse(acc.role === "streamer" ? { ...input, streamerId: acc.id } : input);
     if (!parsed.success) return { ok: false, error: firstError(parsed.error) };
+    if (!(await canUseStreamer(acc, parsed.data.streamerId))) return { ok: false, error: "streamerNotAllowed" };
     const { streamerPassword: sp, moderatorPassword: mp } = parsed.data;
 
     const [sh, mh] = await Promise.all([hashPassword(sp), hashPassword(mp)]);
@@ -91,10 +100,16 @@ export async function updateBoard(id: string, input: BoardInput, expectedUpdated
   return guarded(async () => {
     if (!uuidSchema.safeParse(id).success || typeof expectedUpdatedAt !== "string") return { ok: false, error: "invalidData" };
     await requireBoard(id, "manage");
+    const acc = await requireAccount();
     const parsed = boardSchema.safeParse(input);
     if (!parsed.success) return { ok: false, error: firstError(parsed.error) };
     const row = toRow(parsed.data);
     const { data: before } = await supabaseAdmin().from("boards").select(Object.keys(row).join(", ")).eq("id", id).maybeSingle();
+    if (!before) return { ok: false, error: "boardNotFound" };
+    // Cambiar de streamer: solo a uno para el que esta cuenta podría crear boards (un streamer, nunca)
+    if ((before as unknown as { streamer_id: string | null }).streamer_id !== row.streamer_id) {
+      if (acc.role === "streamer" || !(await canUseStreamer(acc, row.streamer_id))) return { ok: false, error: "streamerNotAllowed" };
+    }
 
     const { data, error } = await supabaseAdmin()
       .from("boards")
@@ -134,7 +149,7 @@ export async function setBoardFlag(id: string, flag: "isActive" | "submissionsOp
   });
 }
 
-/** Borra el board, todas sus entregas y todas sus fotos. Solo el dueño o un Site Admin. */
+/** Borra el board, todas sus entregas y todos sus archivos. Quien lo creó, su streamer o un Site Admin. */
 export async function deleteBoard(id: string): Promise<Result> {
   return guarded(async () => {
     if (!uuidSchema.safeParse(id).success) return { ok: false, error: "invalidData" };
@@ -211,11 +226,11 @@ export async function regenerateBoardPassword(id: string, kind: PasswordKind): P
 
 /* ----------------------------- Compartir ----------------------------- */
 
-/** Comparte el board con otro admin por su nombre de usuario. Solo el dueño o un Site Admin. */
+/** Comparte el board con otro admin por su nombre de usuario. Solo quien lo creó o un Site Admin. */
 export async function shareBoard(id: string, username: string): Promise<Result<{ member: { id: string; username: string } }>> {
   return guarded(async () => {
     if (!uuidSchema.safeParse(id).success) return { ok: false, error: "invalidData" };
-    await requireBoard(id, "own");
+    await requireBoard(id, "share");
     const acc = await requireAccount();
     if (!(await rateLimit(`share:${acc.id}`, 60, 3600))) return { ok: false, error: "rateLimited" };
     const u = usernameSchema.safeParse(username);
@@ -223,7 +238,7 @@ export async function shareBoard(id: string, username: string): Promise<Result<{
 
     const db = supabaseAdmin();
     const [{ data: target }, { data: board }] = await Promise.all([
-      db.from("admins").select("id, username").eq("username", u.data).maybeSingle(),
+      db.from("admins").select("id, username").eq("username", u.data).neq("role", "streamer").maybeSingle(),
       db.from("boards").select("owner_id").eq("id", id).maybeSingle(),
     ]);
     if (!board) return { ok: false, error: "boardNotFound" };
@@ -241,7 +256,7 @@ export async function shareBoard(id: string, username: string): Promise<Result<{
 export async function unshareBoard(id: string, adminId: string): Promise<Result> {
   return guarded(async () => {
     if (!uuidSchema.safeParse(id).success || !uuidSchema.safeParse(adminId).success) return { ok: false, error: "invalidData" };
-    await requireBoard(id, "own");
+    await requireBoard(id, "share");
     const { data: removed, error } = await supabaseAdmin().from("board_members").delete().eq("board_id", id).eq("admin_id", adminId).select("admin_id");
     if (error) return { ok: false, error: "db" };
     if (removed?.length) {

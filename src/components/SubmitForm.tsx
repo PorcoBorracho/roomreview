@@ -2,34 +2,42 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Mail, ImagePlus, X, Send, AlertCircle, ShieldAlert, Loader2, ArrowRight, ArrowLeft, Info } from "lucide-react";
+import { Mail, ImagePlus, X, Send, AlertCircle, ShieldAlert, Loader2, ArrowRight, ArrowLeft, Info, Play } from "lucide-react";
 import { initSubmission, finalizeSubmission } from "@/actions/submit";
 import { ImageError, processImage } from "@/lib/image-client";
+import { VideoError, processVideo } from "@/lib/video-client";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import Turnstile from "./Turnstile";
 import SubmissionReceipt from "./SubmissionReceipt";
 import { LEGAL } from "@/config/legal";
-import type { Platform } from "@/lib/platforms";
 import { useT } from "@/i18n/client";
 import type { Dict } from "@/i18n/dict";
 import FormError from "./FormError";
-import { BUCKET, MAX_DESCRIPTION as MAX_DESC, MAX_FILES, MAX_FILE_BYTES as MAX_BYTES } from "@/lib/limits";
+import { BUCKET, MAX_DESCRIPTION as MAX_DESC, MAX_FILES, MAX_FILE_BYTES as MAX_BYTES, MAX_VIDEOS, MAX_VIDEO_SECONDS } from "@/lib/limits";
 
-type Picked = { id: string; blob: Blob; preview: string };
+type Kind = "image" | "video";
+type Picked = { id: string; blob: Blob; preview: string; kind: Kind };
+/** Archivo que se está preparando (los vídeos tardan: se muestra el progreso) */
+type Busy = { id: string; kind: Kind; progress: number };
+
+const VIDEO_EXT = /\.(mp4|m4v|mov|webm|mkv|3gp)$/i;
+const isVideoFile = (f: File) => f.type.startsWith("video/") || (!f.type && VIDEO_EXT.test(f.name));
 type Progress = { label: string; done: number; total: number };
 /** Error: clave del diccionario (de errors) o texto ya traducido */
 type Err = { key: string } | { text: string } | null;
 type Consents = { age: boolean; thirdParties: boolean; broadcast: boolean; privacy: boolean };
 const NO_CONSENTS: Consents = { age: false, thirdParties: false, broadcast: false, privacy: false };
 
-export default function SubmitForm({ boardId, peopleAllowed, streamerName, platform }: {
-  boardId: string; peopleAllowed: boolean; streamerName: string; platform: Platform;
+export default function SubmitForm({ boardId, peopleAllowed, allowVideos, streamerName }: {
+  boardId: string; peopleAllowed: boolean; allowVideos: boolean; streamerName: string;
 }) {
   const t = useT();
   const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [media, setMedia] = useState<Picked[]>([]);
-  const [processing, setProcessing] = useState(0);
+  const [busyItems, setBusyItems] = useState<Busy[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const processing = busyItems.length;
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<Err>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
@@ -52,24 +60,48 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
   useEffect(() => () => mediaRef.current.forEach((m) => URL.revokeObjectURL(m.preview)), []);
 
 
+  const videosUsed = media.filter((m) => m.kind === "video").length + busyItems.filter((b) => b.kind === "video").length;
+
   async function addFiles(list: FileList | File[]) {
     setError(null);
-    const all = Array.from(list);
+    setNotice(null);
+    let all = Array.from(list);
+    // Vídeos: solo si el board los acepta, y como mucho MAX_VIDEOS por entrega
+    if (all.some(isVideoFile)) {
+      if (!allowVideos) {
+        setError({ text: t.form.videoErrors.notAllowed });
+        all = all.filter((f) => !isVideoFile(f));
+      } else {
+        let free = MAX_VIDEOS - videosUsed;
+        const before = all.length;
+        all = all.filter((f) => !isVideoFile(f) || free-- > 0);
+        if (all.length < before) setError({ text: t.form.videoErrors.onlyOne });
+      }
+    }
     const files = all.slice(0, Math.max(0, slotsLeft));
     if (all.length > files.length) setError({ text: t.form.tooManyPhotos(MAX_FILES) });
     if (files.length === 0) return;
 
-    setProcessing((n) => n + files.length);
-    for (const file of files) {
+    const jobs = files.map((file) => ({ file, busy: { id: crypto.randomUUID(), kind: (isVideoFile(file) ? "video" : "image") as Kind, progress: 0 } }));
+    setBusyItems((b) => [...b, ...jobs.map((j) => j.busy)]);
+    for (const { file, busy } of jobs) {
       try {
-        const blob = await processImage(file);
-        if (blob.size > MAX_BYTES) throw new ImageError("tooDetailed", file.name);
-        const item = { id: crypto.randomUUID(), blob, preview: URL.createObjectURL(blob) };
+        let blob: Blob;
+        if (busy.kind === "video") {
+          const res = await processVideo(file, (p) =>
+            setBusyItems((b) => b.map((x) => (x.id === busy.id ? { ...x, progress: p } : x))));
+          blob = res.blob;
+          if (res.trimmed) setNotice(t.form.videoTrimmed(MAX_VIDEO_SECONDS));
+        } else {
+          blob = await processImage(file);
+          if (blob.size > MAX_BYTES) throw new ImageError("tooDetailed", file.name);
+        }
+        const item: Picked = { id: busy.id, blob, preview: URL.createObjectURL(blob), kind: busy.kind };
         setMedia((m) => [...m, item].slice(0, MAX_FILES));
       } catch (e) {
-        setError({ text: imageErrorText(t, e) });
+        setError({ text: busy.kind === "video" ? videoErrorText(t, e) : imageErrorText(t, e) });
       } finally {
-        setProcessing((n) => n - 1);
+        setBusyItems((b) => b.filter((x) => x.id !== busy.id));
       }
     }
   }
@@ -112,7 +144,7 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
         email: String(fd.get("email") ?? ""),
         country: String(fd.get("country") ?? ""),
         description: String(fd.get("description") ?? ""),
-        files: media.map((m) => ({ type: "image/jpeg", size: m.blob.size })),
+        files: media.map((m) => ({ type: m.blob.type as "image/jpeg" | "video/mp4", size: m.blob.size })),
         turnstileToken: token,
         consents,
       });
@@ -123,7 +155,7 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
         setProgress({ label: t.review.uploading(i + 1, init.uploads.length), done: i + 1, total });
         const u = init.uploads[i];
         const { error: upErr } = await storage.uploadToSignedUrl(u.path, u.token, media[i].blob, {
-          contentType: "image/jpeg",
+          contentType: media[i].blob.type,
           upsert: false,
         });
         if (upErr) throw new TextError(t.review.uploadFailed);
@@ -191,7 +223,7 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
 
         <div>
           <div className="mb-2 flex items-baseline justify-between gap-3">
-            <span id="photos-label" className="text-sm font-medium text-ink">{t.form.photos}</span>
+            <span id="photos-label" className="text-sm font-medium text-ink">{allowVideos ? t.form.photosAndVideo : t.form.photos}</span>
             <span className="text-xs tabular-nums text-subtle">{t.form.photosCount(media.length, MAX_FILES)}</span>
           </div>
 
@@ -218,34 +250,40 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
               <span className="text-sm font-medium text-muted">{t.form.photoLimit}</span>
             ) : (
               <span className="text-sm text-muted">
-                <span className="font-semibold text-accent-text">{t.form.choosePhotos}</span> {t.form.orDrag}
+                <span className="font-semibold text-accent-text">{allowVideos ? t.form.chooseFiles : t.form.choosePhotos}</span> {t.form.orDrag}
               </span>
             )}
-            <span id="photos-help" className="text-xs text-subtle">{t.form.photoTypes(MAX_FILES)}</span>
+            <span id="photos-help" className="text-xs text-subtle">{allowVideos ? t.form.mediaTypes(MAX_FILES, MAX_VIDEO_SECONDS) : t.form.photoTypes(MAX_FILES)}</span>
           </button>
-          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" tabIndex={-1}
+          <input ref={fileRef} type="file" accept={allowVideos ? "image/jpeg,image/png,image/webp,video/*" : "image/jpeg,image/png,image/webp"} multiple className="sr-only" tabIndex={-1}
             onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
 
           {(media.length > 0 || processing > 0) && (
             <ul className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-5">
               {media.map((m, i) => (
                 <li key={m.id} className="enter-zoom group relative aspect-square overflow-hidden rounded-xl border border-line bg-black">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.preview} alt={t.form.photoAlt(i + 1)} className="size-full object-cover" />
+                  <Preview item={m} alt={t.form.photoAlt(i + 1)} />
                   <button type="button" onClick={() => removeMedia(m.id)} aria-label={t.form.removePhoto(i + 1)}
                     className="pressable absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-full bg-black/75 text-white backdrop-blur-sm hover:bg-danger">
                     <X className="size-3.5" />
                   </button>
                 </li>
               ))}
-              {Array.from({ length: processing }).map((_, i) => (
-                <li key={`p${i}`} className="flex aspect-square items-center justify-center rounded-xl border border-line bg-well" aria-label={t.form.processingPhoto}>
+              {busyItems.map((b) => (
+                <li key={b.id} className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-line bg-well"
+                  aria-label={b.kind === "video" ? t.form.processingVideo : t.form.processingPhoto}>
                   <Loader2 className="size-5 animate-spin text-subtle" />
+                  {b.kind === "video" && <span className="text-[11px] font-semibold tabular-nums text-subtle">{Math.round(b.progress * 100)}%</span>}
                 </li>
               ))}
             </ul>
           )}
 
+            {notice && (
+              <p role="status" className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-muted">
+                <Info className="mt-0.5 size-4 shrink-0 text-accent-text" /> <span>{notice}</span>
+              </p>
+            )}
             <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-muted">
               <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-text" />
               <span>{t.form.quickCheck(peopleAllowed)}</span>
@@ -270,7 +308,8 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
         onClose={() => { if (!submitting) setReviewOpen(false); }}
         summary={summary}
         peopleAllowed={peopleAllowed}
-        where={t.streamPhrase(streamerName.trim(), platform === "other" ? null : t.platforms[platform])}
+        allowVideos={allowVideos}
+        where={t.streamPhrase(streamerName.trim(), "Twitch")}
         media={media}
         consents={consents}
         setConsent={(k, v) => setConsents((c) => ({ ...c, [k]: v }))}
@@ -287,6 +326,34 @@ export default function SubmitForm({ boardId, peopleAllowed, streamerName, platf
 
 class KeyError extends Error {}
 class TextError extends Error {}
+
+function videoErrorText(t: Dict, e: unknown): string {
+  if (e instanceof VideoError) {
+    const m = t.form.videoErrors;
+    if (e.code === "unreadable") return m.unreadable(e.fileName);
+    if (e.code === "unsupported") return m.unsupported;
+    if (e.code === "tooLargeInput") return m.tooLargeInput;
+    if (e.code === "tooLarge") return m.tooLarge(e.fileName);
+    return m.failed;
+  }
+  return t.form.videoErrors.failed;
+}
+
+/** Vista previa en el formulario: la foto, o el vídeo (sin sonido) con un icono de reproducir */
+function Preview({ item, alt }: { item: Picked; alt: string }) {
+  if (item.kind === "video") {
+    return (
+      <>
+        <video src={`${item.preview}#t=0.1`} muted playsInline preload="metadata" aria-label={alt} className="size-full object-cover" />
+        <span aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="flex size-8 items-center justify-center rounded-full bg-black/65 text-white"><Play className="size-4 fill-current" /></span>
+        </span>
+      </>
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={item.preview} alt={alt} className="size-full object-cover" />;
+}
 
 function imageErrorText(t: Dict, e: unknown): string {
   if (e instanceof ImageError) {
@@ -338,7 +405,7 @@ function Consent({ name, checked, onChange, children }: {
   );
 }
 
-function PhotoGuidelines({ peopleAllowed }: { peopleAllowed: boolean }) {
+function PhotoGuidelines({ peopleAllowed, allowVideos }: { peopleAllowed: boolean; allowVideos: boolean }) {
   const t = useT();
   const g = t.guidelines;
   const B = ({ children }: { children: React.ReactNode }) => <strong className="font-medium text-ink">{children}</strong>;
@@ -367,6 +434,7 @@ function PhotoGuidelines({ peopleAllowed }: { peopleAllowed: boolean }) {
           <ul className="mt-1.5 list-disc space-y-1 pl-5 marker:text-subtle">
             <li>{g.ownPhotos}</li>
             <li>{g.exifRemoved}</li>
+            {allowVideos && <li>{g.videoNote(MAX_VIDEO_SECONDS)}</li>}
             <li>{g.publicBroadcast}</li>
             <li>{g.deletionCode}</li>
           </ul>
@@ -381,6 +449,7 @@ type DialogProps = {
   onClose: () => void;
   summary: { username: string; country: string };
   peopleAllowed: boolean;
+  allowVideos: boolean;
   /** "PixelWitch's Twitch streams", ya traducido */
   where: string;
   media: Picked[];
@@ -394,7 +463,7 @@ type DialogProps = {
   onSend: () => void;
 };
 
-function ReviewDialog({ open, onClose, summary, peopleAllowed, where, media, consents, setConsent, onToken, captchaKey, error, progress, canSend, onSend }: DialogProps) {
+function ReviewDialog({ open, onClose, summary, peopleAllowed, allowVideos, where, media, consents, setConsent, onToken, captchaKey, error, progress, canSend, onSend }: DialogProps) {
   const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
   const link = "font-medium text-accent-text underline underline-offset-4";
@@ -428,7 +497,7 @@ function ReviewDialog({ open, onClose, summary, peopleAllowed, where, media, con
             <div className="min-w-0">
               <h3 id="review-title" className="text-lg font-semibold text-strong">{t.review.title}</h3>
               <p className="mt-0.5 truncate text-sm text-muted">
-                {t.review.summary(summary.username, summary.country, media.length)}
+                {t.review.summary(summary.username, summary.country, media.filter((m) => m.kind === "image").length, media.filter((m) => m.kind === "video").length)}
               </p>
             </div>
             <button type="button" onClick={onClose} disabled={sending} aria-label={t.review.backToEdit}
@@ -440,14 +509,13 @@ function ReviewDialog({ open, onClose, summary, peopleAllowed, where, media, con
           <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
             <ul className="flex gap-2 overflow-x-auto" aria-label={t.review.yourPhotos}>
               {media.map((m, i) => (
-                <li key={m.id} className="size-20 shrink-0 overflow-hidden rounded-lg border border-line bg-black">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.preview} alt={t.form.photoAlt(i + 1)} className="size-full object-cover" />
+                <li key={m.id} className="relative size-20 shrink-0 overflow-hidden rounded-lg border border-line bg-black">
+                  <Preview item={m} alt={t.form.photoAlt(i + 1)} />
                 </li>
               ))}
             </ul>
 
-            <PhotoGuidelines peopleAllowed={peopleAllowed} />
+            <PhotoGuidelines peopleAllowed={peopleAllowed} allowVideos={allowVideos} />
 
             <BasicInfo where={where} />
 

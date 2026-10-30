@@ -9,7 +9,7 @@ const es: PrivacyDoc = {
   sections: ({ L, mail, del, report, controller, reportResolvedDays, reportMaxDays, auditDays }) => [
     { id: "summary", title: "En resumen", body: (
       <ul>
-        <li>Solo usamos lo que envías (formulario y fotos) para revisarlo y, si un moderador lo aprueba, mostrarlo en directo.</li>
+        <li>Solo usamos lo que envías (formulario, fotos y, en los boards que lo permiten, un vídeo) para revisarlo y, si un moderador lo aprueba, mostrarlo en directo.</li>
         <li>Tu email nunca se muestra en el directo.</li>
         <li>El directo es público: una vez mostrado, no se pueden eliminar del todo las copias que hagan otros.</li>
         <li>Puedes borrar tu envío cuando quieras con tu código de borrado; si no, se borra a los {L.retentionDays} días.</li>
@@ -25,7 +25,7 @@ const es: PrivacyDoc = {
             {
               id: "submissions",
               title: "Tu envío",
-              what: <>Usuario, email, país, descripción, el board elegido y tus fotos (sin los datos de ubicación y de la cámara, que se eliminan en tu navegador).</>,
+              what: <>Usuario, email, país, descripción, el board elegido, tus fotos y, en los boards que lo permiten, un vídeo. Los datos de ubicación y de la cámara se eliminan en tu navegador; los vídeos, además, se comprimen ahí y se envían sin sonido.</>,
               why: "Revisarlo y, si se aprueba, mostrarlo en directo. El email solo sirve para contactarte sobre el envío.",
               basis: "Tu consentimiento (art. 6.1.a RGPD), que puedes retirar en cualquier momento.",
               kept: <><strong>{L.retentionDays} días</strong>, o hasta que lo borres tú o un moderador. Subidas incompletas: 24 horas.</>,
@@ -53,6 +53,14 @@ const es: PrivacyDoc = {
               kept: "Contadores de intentos: 48 horas.",
             },
             {
+              id: "streamers",
+              title: "Cuentas de streamer (Twitch)",
+              what: <>Solo de los streamers: tu ID de usuario, login y nombre de Twitch, el enlace a tu imagen de perfil, el estado de tu cuenta y las fechas de acceso, y los Admins de tu equipo. No recibimos tu email ni tu contraseña de Twitch, y no guardamos ningún token de Twitch.</>,
+              why: "Confirmar que eres el streamer, mostrar tu página pública y tus boards, y gestionar quién puede ayudarte.",
+              basis: "Prestar el servicio que pides (art. 6.1.b) y nuestro interés legítimo en evitar suplantaciones (art. 6.1.f).",
+              kept: "Mientras exista tu cuenta. Las solicitudes que no se aprueban se borran a los 30 días.",
+            },
+            {
               id: "staff",
               title: "Cuentas del equipo y registro de actividad",
               what: <>De los administradores: usuario, rol, un hash de la contraseña, la clave cifrada del 2FA y el último inicio de sesión. Un <strong>registro de actividad</strong> anota quién hizo qué y cuándo (inicios de sesión, aprobaciones, borrados, cambios en boards y cuentas) con un identificador de conexión seudonimizado. Nunca incluye datos de quien envía.</>,
@@ -69,17 +77,19 @@ const es: PrivacyDoc = {
       <ul>
         <li>Envía solo fotos que hayas hecho o sobre las que tengas derechos, y que tengas permiso para compartir.</li>
         <li>Sin personas en las fotos, salvo en los boards que lo permiten (como reviews de cosplay): ahí, solo tú o adultos que hayan aceptado salir. <strong>Nunca menores.</strong></li>
-        <li>Concedes a {L.controllerName} y <strong>al streamer indicado en el board</strong> una licencia gratuita, no exclusiva y revocable en cualquier momento para mostrar las fotos, el usuario, el país y la descripción en <strong>los directos de ese streamer</strong>, sus grabaciones y destacados. Nada más: ni venta, ni publicidad, ni otras publicaciones, ni entrenamiento de IA.</li>
+        <li>Concedes a {L.controllerName} y <strong>al streamer indicado en el board</strong> una licencia gratuita, no exclusiva y revocable en cualquier momento para mostrar las fotos y el vídeo, el usuario, el país y la descripción en <strong>los directos de ese streamer</strong>, sus grabaciones y destacados. Nada más: ni venta, ni publicidad, ni otras publicaciones, ni entrenamiento de IA.</li>
         <li>Los moderadores pueden rechazar, borrar, difuminar o saltar cualquier foto para proteger la privacidad.</li>
         <li>Cualquiera puede ver, grabar y recortar el directo. Si retiras el consentimiento, dejamos de mostrar tus fotos y borramos las grabaciones y clips que controlamos cuando la plataforma lo permite; no podemos borrar copias hechas por otros.</li>
       </ul>
     )},
     { id: "recipients", title: "4. Quién puede ver tus datos", body: (
       <ul>
-        <li><strong>El equipo del board</strong>: el admin que lo creó, los admins con quien lo comparta y sus Board Admins (moderadores con la contraseña de la cola). Ven todo, pero solo de ese board.</li>
+        <li><strong>El equipo del board</strong>: el equipo del streamer (hasta dos Admins que elige), el admin que creó el board, los admins con quien se comparta y sus Board Admins (moderadores con la contraseña de la cola). Ven todo, pero solo de ese board.</li>
         <li><strong>Los Site Admins</strong> (gestionan la web): todos los boards, los reportes y el registro de actividad.</li>
-        <li><strong>El streamer</strong>: fotos aprobadas, usuario, país y descripción de su board. Nunca tu email.</li>
+        <li><strong>El streamer</strong>: fotos y vídeos aprobados, usuario, país y descripción de su board. Nunca tu email. Los streamers no ven la cola.</li>
         <li><strong>La audiencia del directo</strong>: lo mismo, y solo cuando se aprueba.</li>
+        <li><strong>Cualquiera</strong>, solo en el caso de los streamers: tu página pública muestra tu nombre de Twitch, tu imagen de perfil y tus boards activos, y se te puede encontrar en el buscador.</li>
+        <li><strong>Twitch</strong> (Twitch Interactive, Inc.), solo cuando un streamer entra con Twitch: Twitch gestiona ese acceso según su propia política de privacidad y nos dice quién eres.</li>
         <li><strong>Proveedores</strong> que trabajan para nosotros con contrato de encargado del tratamiento: Supabase (base de datos y fotos, región {L.databaseRegion}), Vercel (alojamiento, registros técnicos de corta duración) y Cloudflare (verificación anti-bots). Cuando acceden desde EE. UU., las transferencias se amparan en el Marco de Privacidad de Datos UE-EE. UU. y/o en cláusulas contractuales tipo (arts. 45 y 46).</li>
         <li>Autoridades, solo si la ley lo exige.</li>
       </ul>
@@ -102,13 +112,14 @@ const es: PrivacyDoc = {
         <ul>
           <li>Cookies de seguridad de Cloudflare Turnstile, en los formularios con verificación anti-bots.</li>
           <li>Sesión del equipo (12 horas) y paso de verificación en dos pasos (5 minutos).</li>
+          <li>Comprobación del acceso con Twitch (10 minutos), solo mientras un streamer entra con Twitch.</li>
           <li>Idioma (1 año), solo si eliges uno en el menú.</li>
         </ul>
         <p>El tema de color se guarda en tu navegador y nunca se nos envía.</p>
       </>
     )},
     { id: "security", title: "7. Seguridad", body: (
-      <p>Las fotos están en un almacenamiento privado y solo se muestran mediante enlaces temporales. Solo los Site Admins pueden crear cuentas del equipo, que usan contraseñas robustas guardadas con hash y verificación en dos pasos opcional. Cada board tiene contraseñas distintas para la cola y el deck, que se pueden regenerar en cualquier momento para revocar el acceso. El tráfico va cifrado (HTTPS), los inicios de sesión están protegidos contra bots y fuerza bruta, y solo nuestro servidor accede a la base de datos.</p>
+      <p>Las fotos y los vídeos están en un almacenamiento privado y solo se muestran mediante enlaces temporales. Solo los Site Admins crean cuentas del equipo, y cada streamer puede añadir hasta dos Admins a su propio equipo; el equipo usa contraseñas robustas guardadas con hash y verificación en dos pasos (obligatoria para el Owner). Los streamers entran con Twitch y deben estar aprobados antes de crear boards. Cada board tiene contraseñas distintas para la cola y el deck, que se pueden regenerar en cualquier momento para revocar el acceso. El tráfico va cifrado (HTTPS), los inicios de sesión están protegidos contra bots y fuerza bruta, y solo nuestro servidor accede a la base de datos.</p>
     )},
     { id: "minors", title: "8. Edad mínima", body: (
       <p>Debes tener {L.minAge} años o más para enviar. Si sabemos que un envío procede de un menor o lo muestra, lo borramos.</p>

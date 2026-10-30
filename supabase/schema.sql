@@ -131,8 +131,9 @@ revoke all on table public.rate_limits      from anon, authenticated;
 -- Funciones (transaccionales y atómicas)
 -- ---------------------------------------------------------------------
 
--- Crea una entrega y sus fotos en UNA transacción: o se guarda todo o nada.
--- Comprueba en la misma transacción que el board está activo y abierto.
+-- Crea una entrega y sus archivos (fotos y, si el board lo permite, un vídeo) en UNA transacción:
+-- o se guarda todo o nada. Comprueba en la misma transacción que el board está activo y abierto,
+-- que su streamer está activo y que acepta vídeos si se envía alguno.
 -- (borra las firmas de versiones anteriores, si existen)
 drop function if exists public.create_submission(uuid, text, text, text, text, text, jsonb);
 drop function if exists public.create_submission(uuid, text, text, text, text, text, jsonb, text, text);
@@ -153,8 +154,10 @@ security invoker
 set search_path = public
 as $$
 declare
-  v_count int := jsonb_array_length(p_media);
-  v_open boolean;
+  v_count  int := jsonb_array_length(p_media);
+  v_videos int;
+  v_open   boolean;
+  v_allow  boolean;
 begin
   if v_count < 1 or v_count > 5 then
     raise exception 'invalid media count';
@@ -163,10 +166,22 @@ begin
     raise exception 'consent required';
   end if;
 
-  -- FOR SHARE: si un admin cierra el board a la vez, una de las dos operaciones espera a la otra
-  select is_active and submissions_open into v_open from boards where id = p_board_id for share;
+  -- FOR SHARE: si un admin cierra el board (o suspenden al streamer) a la vez, una operación espera a la otra
+  select b.is_active and b.submissions_open and coalesce(a.status = 'active', false), b.allow_videos
+    into v_open, v_allow
+  from boards b left join admins a on a.id = b.streamer_id
+  where b.id = p_board_id
+  for share of b;
   if v_open is distinct from true then
     raise exception 'board closed' using errcode = 'P0001', hint = 'BOARD_CLOSED';
+  end if;
+
+  select count(*) into v_videos from jsonb_array_elements(p_media) as m where m->>'content_type' like 'video/%';
+  if v_videos > 0 and v_allow is distinct from true then
+    raise exception 'videos not allowed' using hint = 'VIDEOS_OFF';
+  end if;
+  if v_videos > 1 then  -- debe coincidir con MAX_VIDEOS (src/lib/limits.ts)
+    raise exception 'too many videos' using hint = 'VIDEOS_OFF';
   end if;
 
   insert into submissions (id, board_id, username, email, country, description, upload_token_hash, media_count,
@@ -245,14 +260,14 @@ grant execute on function public.rate_limit_reset(text) to service_role;
 --  Cuentas de administración, permisos por board y problemas reportados
 -- =====================================================================
 
--- Direcciones reservadas para páginas de la web (debe coincidir con src/lib/slug.ts).
+-- Nombres reservados (debe coincidir con RESERVED_PATHS en src/lib/slug.ts).
 -- NOT VALID: no falla si un board antiguo ya usaba una de las nuevas; solo se aplica a cambios.
 alter table public.boards drop constraint if exists boards_slug_check;
 alter table public.boards add constraint boards_slug_check
   check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and char_length(slug) between 3 and 48
-         and slug not in ('login', 'privacy', 'delete', 'api', 'admin', 'admins', 'streamer', 'queue', 'deck',
-                          'new', 'settings', 'static', 'public', 'assets', 'favicon', 'robots', 'sitemap',
-                          'account', 'problems', 'report', 'contact', 'setup', 'logout', 'audit', 'activity'))
+         and slug not in ('login', 'privacy', 'delete', 'api', 'admin', 'admins', 'streamer', 'streamers', 'queue', 'deck',
+                          'new', 'settings', 'static', 'public', 'assets', 'favicon', 'robots', 'sitemap', 'panel', 'team',
+                          'account', 'problems', 'report', 'contact', 'setup', 'logout', 'audit', 'activity', 'search', 'auth'))
   not valid;
 
 -- Cuentas (registro cerrado: solo un Site Admin crea cuentas)
@@ -317,7 +332,7 @@ revoke all on table public.admins          from anon, authenticated;
 revoke all on table public.board_members   from anon, authenticated;
 revoke all on table public.problem_reports from anon, authenticated;
 
--- Configuración inicial: crea el PRIMER Site Admin solo si no existe ninguna cuenta.
+-- Configuración inicial: crea el Owner (el primer Site Admin) solo si no existe ninguna cuenta.
 -- El bloqueo de tabla impide que dos peticiones simultáneas creen dos.
 -- Los boards sin dueño (de versiones anteriores) pasan a ser suyos.
 create or replace function public.bootstrap_site_admin(p_username text, p_hash text)
@@ -329,53 +344,59 @@ as $$
 declare v_id uuid;
 begin
   lock table admins in share row exclusive mode;
-  if exists (select 1 from admins) then
+  if exists (select 1 from admins where role <> 'streamer') then
     raise exception 'already initialised' using hint = 'ALREADY_SETUP';
   end if;
   insert into admins (username, role, password_hash, must_change_password)
-  values (p_username, 'site_admin', p_hash, false)
+  values (p_username, 'owner', p_hash, false)
   returning id into v_id;
   update boards set owner_id = v_id where owner_id is null;
   return v_id;
 end $$;
 
--- Cambiar el rol de un admin sin dejar nunca la web sin Site Admins.
--- FOR UPDATE sobre todos los Site Admins: dos cambios simultáneos se ejecutan uno detrás de otro.
+-- Cambiar el rol de una cuenta del equipo entre Admin y Site Admin.
+-- El Owner y los streamers no se pueden cambiar. FOR UPDATE: dos cambios simultáneos van uno detrás de otro.
+-- Al pasar a Site Admin deja de ocupar plaza en los equipos de streamer (ya ve todos los boards).
 create or replace function public.set_admin_role(p_target uuid, p_role text)
 returns void
 language plpgsql
 security invoker
 set search_path = public
 as $$
-declare v_count int;
+declare v_role text; v_count int;
 begin
   if p_role not in ('admin', 'site_admin') then raise exception 'invalid role'; end if;
-  perform 1 from admins where role = 'site_admin' for update;
+  perform 1 from admins where role in ('owner', 'site_admin') for update;
+  select role into v_role from admins where id = p_target for update;
+  if v_role is null then raise exception 'not found' using hint = 'NOT_FOUND'; end if;
+  if v_role not in ('admin', 'site_admin') then raise exception 'protected' using hint = 'PROTECTED'; end if;
   if p_role = 'admin' then
-    select count(*) into v_count from admins where role = 'site_admin' and id <> p_target;
+    select count(*) into v_count from admins where role in ('owner', 'site_admin') and id <> p_target;
     if v_count = 0 then raise exception 'last site admin' using hint = 'LAST_SITE_ADMIN'; end if;
   end if;
   update admins set role = p_role, session_version = session_version + 1, updated_at = now()
   where id = p_target;
-  if not found then raise exception 'not found' using hint = 'NOT_FOUND'; end if;
+  if p_role = 'site_admin' then
+    delete from streamer_admins where admin_id = p_target;
+  end if;
 end $$;
 
--- Borrar un admin: sus boards pasan a quien lo borra, en la misma transacción.
+-- Borrar una cuenta del equipo (Admin o Site Admin): sus boards pasan a quien la borra, en la misma transacción.
+-- El Owner no se puede borrar; los streamers se gestionan aparte.
 create or replace function public.delete_admin(p_target uuid, p_actor uuid)
 returns void
 language plpgsql
 security invoker
 set search_path = public
 as $$
-declare v_count int;
+declare v_role text;
 begin
   if p_target = p_actor then raise exception 'self' using hint = 'SELF'; end if;
-  perform 1 from admins where role = 'site_admin' for update;
-  select count(*) into v_count from admins where role = 'site_admin' and id <> p_target;
-  if v_count = 0 then raise exception 'last site admin' using hint = 'LAST_SITE_ADMIN'; end if;
+  select role into v_role from admins where id = p_target for update;
+  if v_role is null then raise exception 'not found' using hint = 'NOT_FOUND'; end if;
+  if v_role not in ('admin', 'site_admin') then raise exception 'protected' using hint = 'PROTECTED'; end if;
   update boards set owner_id = p_actor where owner_id = p_target;
   delete from admins where id = p_target;
-  if not found then raise exception 'not found' using hint = 'NOT_FOUND'; end if;
 end $$;
 
 -- Verificación en dos pasos (TOTP). El secreto se guarda cifrado (AES-256-GCM, clave derivada de SESSION_SECRET).
@@ -545,15 +566,228 @@ drop trigger if exists audit_log_guard_truncate on public.audit_log;
 create trigger audit_log_guard_truncate before truncate on public.audit_log
   for each statement execute function public.audit_log_guard();
 
+-- =====================================================================
+--  Owner, streamers (Twitch), equipos de streamer, desenfoque y vídeos
+-- =====================================================================
+
+-- Roles:
+--  owner      → el primer Site Admin. Verificación en dos pasos obligatoria; no se puede borrar ni degradar.
+--  site_admin → todo, incluidas las cuentas.
+--  admin      → sus boards, los compartidos y los de los streamers a los que está asignado.
+--  streamer   → entra con Twitch; crea sus boards y ve su deck (no la cola). Espera aprobación de un Site Admin.
+alter table public.admins drop constraint if exists admins_role_check;
+alter table public.admins add constraint admins_role_check check (role in ('owner', 'site_admin', 'admin', 'streamer'));
+
+alter table public.admins add column if not exists twitch_id    text;
+alter table public.admins add column if not exists display_name text;
+alter table public.admins add column if not exists avatar_url   text;
+alter table public.admins add column if not exists status       text not null default 'active';
+alter table public.admins add column if not exists approved_by  uuid references public.admins(id) on delete set null;
+alter table public.admins add column if not exists approved_at  timestamptz;
+
+alter table public.admins drop constraint if exists admins_status_check;
+alter table public.admins add constraint admins_status_check check (status in ('active', 'pending', 'suspended'));
+alter table public.admins drop constraint if exists admins_display_name_check;
+alter table public.admins add constraint admins_display_name_check check (display_name is null or char_length(display_name) <= 64);
+-- Solo imágenes de perfil del CDN de Twitch (la CSP solo permite ese origen)
+alter table public.admins drop constraint if exists admins_avatar_url_check;
+alter table public.admins add constraint admins_avatar_url_check
+  check (avatar_url is null or (char_length(avatar_url) <= 300 and avatar_url like 'https://static-cdn.jtvnw.net/%'));
+create unique index if not exists admins_twitch_id_idx on public.admins (twitch_id) where twitch_id is not null;
+
+-- Los streamers no tienen contraseña; el resto de cuentas, sí. Solo los streamers tienen Twitch.
+alter table public.admins alter column password_hash drop not null;
+alter table public.admins drop constraint if exists admins_password_check;
+alter table public.admins add constraint admins_password_check check (role = 'streamer' or password_hash is not null);
+alter table public.admins drop constraint if exists admins_twitch_check;
+alter table public.admins add constraint admins_twitch_check check ((role = 'streamer') = (twitch_id is not null));
+
+-- Nombres: el equipo usa su nombre de usuario; los streamers, su login de Twitch (que es su URL).
+-- Son espacios separados: un Admin y un streamer pueden llamarse igual.
+alter table public.admins drop constraint if exists admins_username_check;
+alter table public.admins add constraint admins_username_check check (
+  (role <> 'streamer' and username ~ '^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$')
+  or (role = 'streamer' and username ~ '^[a-z0-9_]{1,40}$'));
+alter table public.admins drop constraint if exists admins_username_key;
+create unique index if not exists admins_staff_username_idx    on public.admins (username) where role <> 'streamer';
+create unique index if not exists admins_streamer_username_idx on public.admins (username) where role = 'streamer';
+-- Solo puede haber un Owner
+create unique index if not exists admins_one_owner_idx on public.admins ((true)) where role = 'owner';
+
+-- Instalaciones anteriores: el Site Admin más antiguo pasa a ser el Owner (tendrá que activar el 2FA al entrar)
+do $$
+begin
+  if not exists (select 1 from public.admins where role = 'owner') then
+    update public.admins set role = 'owner', session_version = session_version + 1, updated_at = now()
+    where id = (select id from public.admins where role = 'site_admin' order by created_at, id limit 1);
+  end if;
+end $$;
+
+-- Equipo de cada streamer: hasta 2 Admins (debe coincidir con MAX_TEAM en src/lib/limits.ts)
+create table if not exists public.streamer_admins (
+  streamer_id uuid not null references public.admins(id) on delete cascade,
+  admin_id    uuid not null references public.admins(id) on delete cascade,
+  added_by    uuid references public.admins(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  primary key (streamer_id, admin_id)
+);
+create index if not exists streamer_admins_admin_idx on public.streamer_admins (admin_id);
+alter table public.streamer_admins enable row level security;
+alter table public.streamer_admins force row level security;
+revoke all on table public.streamer_admins from anon, authenticated;
+
+-- Boards: cada uno pertenece a un streamer y su dirección es /{streamer}/{board}.
+-- El mismo nombre de board puede repetirse en streamers distintos.
+alter table public.boards add column if not exists streamer_id  uuid references public.admins(id) on delete set null;
+alter table public.boards add column if not exists blur_new     boolean not null default true;   -- deck: cada review empieza difuminada
+alter table public.boards add column if not exists allow_videos boolean not null default false;  -- se puede enviar un vídeo
+create index if not exists boards_streamer_idx on public.boards (streamer_id);
+alter table public.boards drop constraint if exists boards_slug_key;
+create unique index if not exists boards_streamer_slug_idx on public.boards (streamer_id, slug);
+-- (streamer_name y platform son de versiones anteriores: ya no se usan; el streamer sale de su cuenta de Twitch)
+
+create or replace function public.boards_streamer_guard()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.streamer_id is not null and not exists (select 1 from admins where id = new.streamer_id and role = 'streamer') then
+    raise exception 'not a streamer' using hint = 'NOT_STREAMER';
+  end if;
+  return new;
+end $$;
+drop trigger if exists boards_streamer_guard on public.boards;
+create trigger boards_streamer_guard before insert or update of streamer_id on public.boards
+  for each row execute function public.boards_streamer_guard();
+
+-- Archivos: fotos y vídeos (MP4/WebM, comprimidos en el navegador y sin audio)
+alter table public.submission_media drop constraint if exists submission_media_content_type_check;
+alter table public.submission_media add constraint submission_media_content_type_check
+  check (content_type in ('image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'));
+
+-- Entrada con Twitch: crea la cuenta (pendiente de aprobación) o actualiza su login, nombre e imagen.
+-- Si otra cuenta tenía ese login (alguien que se cambió el nombre en Twitch), se le pone uno provisional.
+-- p_max_pending: límite de solicitudes pendientes, para que nadie llene la tabla.
+create or replace function public.streamer_sign_in(
+  p_twitch_id text, p_login text, p_display text, p_avatar text, p_max_pending int
+) returns table (o_id uuid, o_status text, o_session_version int, o_new boolean)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare r admins%rowtype;
+begin
+  perform pg_advisory_xact_lock(hashtext('twitch:' || p_twitch_id));
+  update admins set username = 'renamed_' || substr(md5(id::text), 1, 12), updated_at = now()
+  where role = 'streamer' and username = p_login and twitch_id <> p_twitch_id;
+
+  select * into r from admins where twitch_id = p_twitch_id for update;
+  if found then
+    update admins set username = p_login, display_name = p_display, avatar_url = p_avatar, updated_at = now(),
+                      last_login_at = case when r.status = 'active' then now() else last_login_at end
+    where id = r.id;
+    return query select r.id, r.status, r.session_version, false;
+  else
+    if (select count(*) from admins where role = 'streamer' and status = 'pending') >= p_max_pending then
+      raise exception 'too many pending' using hint = 'PENDING_FULL';
+    end if;
+    insert into admins (username, role, password_hash, must_change_password, twitch_id, display_name, avatar_url, status)
+    values (p_login, 'streamer', null, false, p_twitch_id, p_display, p_avatar, 'pending')
+    returning * into r;
+    return query select r.id, r.status, r.session_version, true;
+  end if;
+end $$;
+
+-- Añadir un Admin existente al equipo de un streamer (máximo 2).
+-- FOR UPDATE sobre el streamer: dos peticiones simultáneas no pueden pasarse del límite.
+create or replace function public.assign_streamer_admin(p_streamer uuid, p_admin uuid, p_actor uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  perform 1 from admins where id = p_streamer and role = 'streamer' and status = 'active' for update;
+  if not found then raise exception 'not a streamer' using hint = 'NOT_STREAMER'; end if;
+  if not exists (select 1 from admins where id = p_admin and role = 'admin') then
+    raise exception 'not an admin' using hint = 'NOT_ADMIN';
+  end if;
+  if exists (select 1 from streamer_admins where streamer_id = p_streamer and admin_id = p_admin) then
+    raise exception 'already' using hint = 'ALREADY';
+  end if;
+  if (select count(*) from streamer_admins where streamer_id = p_streamer) >= 2 then
+    raise exception 'team full' using hint = 'TEAM_FULL';
+  end if;
+  insert into streamer_admins (streamer_id, admin_id, added_by) values (p_streamer, p_admin, p_actor);
+end $$;
+
+-- Un streamer crea un Admin nuevo para su equipo: la cuenta y la asignación, en una sola transacción.
+create or replace function public.streamer_create_admin(p_streamer uuid, p_username text, p_hash text, p_expires timestamptz)
+returns uuid
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare v_id uuid;
+begin
+  perform 1 from admins where id = p_streamer and role = 'streamer' and status = 'active' for update;
+  if not found then raise exception 'not a streamer' using hint = 'NOT_STREAMER'; end if;
+  if (select count(*) from streamer_admins where streamer_id = p_streamer) >= 2 then
+    raise exception 'team full' using hint = 'TEAM_FULL';
+  end if;
+  insert into admins (username, role, password_hash, must_change_password, password_expires_at, created_by)
+  values (p_username, 'admin', p_hash, true, p_expires, p_streamer)
+  returning id into v_id;
+  insert into streamer_admins (streamer_id, admin_id, added_by) values (p_streamer, v_id, p_streamer);
+  return v_id;
+end $$;
+
+-- Restablecer la contraseña del Owner a la de configuración (ADMIN_PASSWORD_HASH).
+-- Cierra todas sus sesiones y le obliga a elegir una nueva al entrar. Opcionalmente quita su 2FA
+-- (tendrá que volver a activarlo antes de poder usar el panel).
+create or replace function public.owner_reset_password(p_hash text, p_expires timestamptz, p_clear_totp boolean)
+returns text
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare v_name text;
+begin
+  update admins set
+    password_hash        = p_hash,
+    must_change_password = true,
+    password_expires_at  = p_expires,
+    session_version      = session_version + 1,
+    totp_secret_enc      = case when p_clear_totp then null else totp_secret_enc end,
+    totp_enabled_at      = case when p_clear_totp then null else totp_enabled_at end,
+    totp_last_step       = case when p_clear_totp then null else totp_last_step end,
+    updated_at           = now()
+  where role = 'owner'
+  returning username into v_name;
+  if v_name is null then raise exception 'no owner' using hint = 'NOT_FOUND'; end if;
+  return v_name;
+end $$;
+
+revoke all on function public.streamer_sign_in(text, text, text, text, int) from public, anon, authenticated;
+revoke all on function public.assign_streamer_admin(uuid, uuid, uuid) from public, anon, authenticated;
+revoke all on function public.streamer_create_admin(uuid, text, text, timestamptz) from public, anon, authenticated;
+revoke all on function public.owner_reset_password(text, timestamptz, boolean) from public, anon, authenticated;
+grant execute on function public.streamer_sign_in(text, text, text, text, int) to service_role;
+grant execute on function public.assign_streamer_admin(uuid, uuid, uuid) to service_role;
+grant execute on function public.streamer_create_admin(uuid, text, text, timestamptz) to service_role;
+grant execute on function public.owner_reset_password(text, timestamptz, boolean) to service_role;
+
 -- ---------------------------------------------------------------------
 -- Almacenamiento: bucket PRIVADO con límites de tamaño y tipo
+-- (20 MB: el máximo de un vídeo; las fotos se limitan a 6 MB en el servidor)
 -- (Supabase rechaza en origen cualquier archivo que no cumpla).
 -- No se crean políticas en storage.objects => el público no puede
 -- listar, leer ni borrar. Solo se sube con URLs firmadas de un uso
 -- que genera el servidor, y solo se ve con URLs firmadas temporales.
 -- ---------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('room-media', 'room-media', false, 6291456, array['image/jpeg', 'image/png', 'image/webp'])
+values ('room-media', 'room-media', false, 20971520, array['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'])
 on conflict (id) do update set
   public             = false,
   file_size_limit    = excluded.file_size_limit,

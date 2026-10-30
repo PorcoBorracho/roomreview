@@ -19,7 +19,7 @@ export async function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     const clean = pathname.replace(/\/$/, "") || "/";
-    url.search = clean === "/" ? "" : `?next=${encodeURIComponent(clean)}`;
+    url.search = clean === "/panel" ? "" : `?next=${encodeURIComponent(clean)}`;
     const res = NextResponse.redirect(url);
     res.headers.set("Content-Security-Policy", csp);
     return res;
@@ -37,9 +37,9 @@ export async function proxy(req: NextRequest) {
 type Need = "account" | "moderate" | "view";
 
 function requirement(pathname: string): Need | null {
-  if (pathname === "/" || /^\/(admins|problems|account|audit)(\/.*)?$/.test(pathname)) return "account";
-  if (/^\/[^/]+\/queue\/?$/.test(pathname)) return "moderate";
-  if (/^\/[^/]+\/deck\/?$/.test(pathname)) return "view";
+  if (/^\/(panel|streamers|team|admins|problems|account|audit)(\/.*)?$/.test(pathname)) return "account";
+  if (/^\/[^/]+\/[^/]+\/queue\/?$/.test(pathname)) return "moderate";
+  if (/^\/[^/]+\/[^/]+\/deck\/?$/.test(pathname)) return "view";
   return null;
 }
 

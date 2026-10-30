@@ -10,13 +10,15 @@ export function buildCsp(nonce: string): string {
     "script-src-attr 'none'",
     // Los atributos style de React necesitan 'unsafe-inline' (no permite ejecutar código)
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' blob: data: ${supabase}`,
+    // Imágenes de perfil de los streamers: solo del CDN de Twitch
+    `img-src 'self' blob: data: ${supabase} https://static-cdn.jtvnw.net`,
     "font-src 'self'",
     `connect-src 'self' ${supabase} https://challenges.cloudflare.com`,
     "frame-src https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
-    "media-src 'none'",
+    // Vídeos: los de las entregas (URLs firmadas de Supabase) y la vista previa local antes de enviar
+    `media-src 'self' blob: ${supabase}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

@@ -12,7 +12,7 @@ import HoldButton from "./HoldButton";
 import CopyButton from "./CopyButton";
 import { Pill } from "./Pill";
 
-type Secret = { title: string; username: string; password: string };
+export type Secret = { title: string; username: string; password: string };
 
 const rowBtn = "pressable flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[13px] font-semibold text-ink hover:border-line-strong disabled:opacity-50";
 
@@ -25,7 +25,7 @@ export default function AdminsManager({ admins, meId, otpHours }: { admins: Admi
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [, start] = useTransition();
-  const site = admins.filter((a) => a.role === "site_admin").length;
+  const site = admins.filter((a) => a.role === "site_admin" || a.role === "owner").length;
 
   function run(id: string, fn: () => Promise<{ ok: boolean; error?: string; password?: string }>, onOk?: (r: { password?: string }) => void) {
     setError(null);
@@ -62,13 +62,15 @@ export default function AdminsManager({ admins, meId, otpHours }: { admins: Admi
       <ul className="mt-8 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-card shadow-raised">
         {admins.map((a) => {
           const me = a.id === meId;
+          // El Owner no se gestiona desde aquí (ni por los Site Admins)
+          const locked = me || a.role === "owner";
           return (
             <li key={a.id} className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center">
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-semibold text-strong">{a.username}</span>
                   {me && <span className="text-xs text-subtle">({t.admins.youTag})</span>}
-                  <Pill tone={a.role === "site_admin" ? "accent" : "muted"}>{t.header.roles[a.role]}</Pill>
+                  <Pill tone={a.role === "admin" ? "muted" : "accent"}>{t.header.roles[a.role]}</Pill>
                   {a.status !== "active" && <Pill tone="warning">{t.admins.status[a.status]}</Pill>}
                   {a.totpEnabled
                     ? <span className="inline-flex items-center gap-1 text-xs font-medium text-success-text"><ShieldCheck className="size-3.5" /> {t.admins.twoFactorOn}</span>
@@ -78,9 +80,15 @@ export default function AdminsManager({ admins, meId, otpHours }: { admins: Admi
                   {t.admins.lastLogin(a.lastLoginAt ? formatDate(locale, a.lastLoginAt, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : t.common.never)}
                   <span className="mx-1.5">·</span>
                   <span className="tabular-nums">{t.admins.boards(a.boards)}</span>
+                  {a.streamers.length > 0 && (
+                    <>
+                      <span className="mx-1.5">·</span>
+                      {t.admins.teamOf(a.streamers.map((x) => `@${x.login}`).join(", "))}
+                    </>
+                  )}
                 </p>
               </div>
-              {!me && (
+              {!locked && (
                 <div className="flex flex-wrap items-center gap-2">
                   <HoldButton holdMs={800} disabled={busy === a.id}
                     onConfirm={() => run(a.id, () => resetAdminPassword(a.id), (r) => r.password && setSecret({ title: t.admins.resetTitle(a.username), username: a.username, password: r.password }))}
@@ -104,7 +112,7 @@ export default function AdminsManager({ admins, meId, otpHours }: { admins: Admi
           );
         })}
       </ul>
-      <p className="mt-3 text-xs leading-relaxed text-subtle">{t.admins.resetHint}</p>
+      <p className="mt-3 text-xs leading-relaxed text-subtle">{t.admins.resetHint} {t.admins.ownerHint}</p>
 
       <CreateDialog open={creating} onClose={() => setCreating(false)}
         onCreated={(username, password) => { setCreating(false); setSecret({ title: t.admins.createdTitle(username), username, password }); router.refresh(); }} />
@@ -187,7 +195,7 @@ function CreateDialog({ open, onClose, onCreated }: { open: boolean; onClose: ()
 }
 
 /** Contraseña de un solo uso: se muestra una única vez */
-function SecretDialog({ secret, otpHours, onClose }: { secret: Secret | null; otpHours: number; onClose: () => void }) {
+export function SecretDialog({ secret, otpHours, onClose }: { secret: Secret | null; otpHours: number; onClose: () => void }) {
   const t = useT();
   const ref = useModal(!!secret);
   return (

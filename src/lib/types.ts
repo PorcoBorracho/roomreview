@@ -1,4 +1,5 @@
-export type MediaItem = { id: string; url: string };
+export type MediaKind = "image" | "video";
+export type MediaItem = { id: string; url: string; kind: MediaKind };
 
 export type AdminSubmission = {
   id: string;
@@ -20,16 +21,31 @@ export type DeckSubmission = {
   media: MediaItem[];
 };
 
+/** Streamer (cuenta de Twitch) tal como se muestra */
+export type StreamerRef = {
+  id: string;
+  /** Login de Twitch: su dirección en la web (/{login}) */
+  login: string;
+  displayName: string;
+  avatarUrl: string | null;
+  /** active: aprobado · pending: esperando aprobación · suspended: suspendido */
+  status: "active" | "pending" | "suspended";
+};
+
 export type Board = {
   id: string;
   slug: string;
-  streamerName: string;
-  platform: import("./platforms").Platform;
+  /** null en boards de versiones anteriores que aún no tienen streamer */
+  streamer: StreamerRef | null;
   title: string;
   description: string;
   isActive: boolean;
   submissionsOpen: boolean;
   peopleAllowed: boolean;
+  /** Deck: cada review nueva empieza difuminada */
+  blurNew: boolean;
+  /** Se puede enviar un vídeo */
+  allowVideos: boolean;
   createdAt: string;
   updatedAt: string;
   hasStreamerPassword: boolean;
@@ -43,4 +59,10 @@ export type Board = {
 export type BoardWithStats = Board & { pending: number; approved: number };
 
 /** Lo mínimo que necesitan las vistas de un board */
-export type BoardInfo = Pick<Board, "id" | "slug" | "streamerName" | "platform" | "title" | "description" | "isActive" | "submissionsOpen" | "peopleAllowed">;
+export type BoardInfo = Pick<
+  Board,
+  "id" | "slug" | "streamer" | "title" | "description" | "isActive" | "submissionsOpen" | "peopleAllowed" | "blurNew" | "allowVideos"
+>;
+
+/** Dirección del board: /{streamer}/{board}, o null si aún no tiene streamer */
+export const boardHref = (b: Pick<Board, "slug" | "streamer">) => (b.streamer ? `/${b.streamer.login}/${b.slug}` : null);

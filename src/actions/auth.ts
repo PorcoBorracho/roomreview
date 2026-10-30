@@ -8,14 +8,14 @@ import { rateLimit, resetRateLimit } from "@/lib/ratelimit";
 import { clientIp, clientKey } from "@/lib/request";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getBoardBySlug, getBoardSecrets } from "@/lib/boards";
+import { getBoard, getBoardSecrets } from "@/lib/boards";
 import { accountPasswordProblem, totpCodeSchema, usernameSchema } from "@/lib/validation";
 import { newTotpSecret, otpauthUri, verifyTotp } from "@/lib/totp";
 import { LEGAL } from "@/config/legal";
-import { hasAnyAdmin } from "@/lib/accounts";
+import { hasAnyAdmin, OTP_HOURS } from "@/lib/accounts";
 import { audit, type AuditActor } from "@/lib/audit";
 import {
-  addGrant, clearMfa, destroySession, getSession, readMfa, signInAccount, startMfa,
+  addGrant, clearMfa, destroySession, getSession, HOME_PANEL, readMfa, signInAccount, startMfa,
 } from "@/lib/session";
 
 /** Los errores son claves del diccionario (sección "errors") */
@@ -26,7 +26,7 @@ const DUMMY_HASH = "scrypt:32768:8:1:AAAAAAAAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAA
 const WINDOW = 15 * 60;
 
 /** Destinos permitidos tras el login (evita redirecciones abiertas): solo rutas propias conocidas */
-const NEXT_RE = /^\/(?:(?:admins|problems|audit|account)|[a-z0-9]+(?:-[a-z0-9]+)*(?:\/(?:queue|deck))?)?$/;
+const NEXT_RE = /^\/(?:(?:panel|admins|streamers|team|problems|audit|account)|[a-z0-9_]{1,40}(?:\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/(?:queue|deck))?)?)?$/;
 const safeNext = (v: FormDataEntryValue | null) => {
   const s = typeof v === "string" ? v : "";
   return s.length <= 200 && NEXT_RE.test(s) ? s : "";
@@ -37,10 +37,14 @@ const str = (f: FormData, k: string, max = 256) => {
 };
 
 type AdminRow = {
-  id: string; username: string; password_hash: string; session_version: number;
+  id: string; username: string; role: string; password_hash: string; session_version: number;
   must_change_password: boolean; password_expires_at: string | null; totp_secret_enc: string | null;
 };
-const ADMIN_COLS = "id, username, password_hash, session_version, must_change_password, password_expires_at, totp_secret_enc";
+const ADMIN_COLS = "id, username, role, password_hash, session_version, must_change_password, password_expires_at, totp_secret_enc";
+
+/** Primera página tras entrar: los pasos obligatorios van antes que nada */
+const landing = (row: { role: string; must_change_password: boolean; totp_secret_enc: string | null }, next: string) =>
+  row.must_change_password ? "/account/password" : row.role === "owner" && !row.totp_secret_enc ? "/account/2fa" : next || HOME_PANEL;
 
 async function captcha(f: FormData): Promise<string | null> {
   const token = str(f, "cf-turnstile-response", 2048);
@@ -50,11 +54,11 @@ async function captcha(f: FormData): Promise<string | null> {
 
 const accountActor = (row: { id: string; username: string }): AuditActor => ({ type: "account", id: row.id, name: row.username });
 
-async function finishAccountLogin(row: { id: string; username: string; must_change_password: boolean }, sessionVersion: number, next: string, mfa: boolean): Promise<never> {
+async function finishAccountLogin(row: AdminRow, sessionVersion: number, next: string, mfa: boolean): Promise<never> {
   await signInAccount(row.id, sessionVersion);
   await audit("account.login", { actor: accountActor(row), details: { mfa, oneTime: row.must_change_password } });
   await supabaseAdmin().from("admins").update({ last_login_at: new Date().toISOString() }).eq("id", row.id);
-  redirect(row.must_change_password ? "/account/password" : next || "/");
+  redirect(landing(row, next));
 }
 
 /* ------------------------- Login con cuenta ------------------------- */
@@ -79,7 +83,8 @@ export async function accountLogin(_prev: AuthState, formData: FormData): Promis
   if (c) return { error: c };
   if (!username || !password) return { error: "incorrectPassword" };
 
-  const { data } = await supabaseAdmin().from("admins").select(ADMIN_COLS).eq("username", username).maybeSingle();
+  // Los streamers no tienen contraseña: entran con Twitch
+  const { data } = await supabaseAdmin().from("admins").select(ADMIN_COLS).eq("username", username).neq("role", "streamer").maybeSingle();
   const row = data as AdminRow | null;
   const ok = await verifyPassword(password, row?.password_hash ?? DUMMY_HASH);
   if (!row || !ok) {
@@ -139,19 +144,22 @@ export async function verifyLoginTotp(_prev: AuthState, formData: FormData): Pro
 /* ---------------- Login con la contraseña de un board ---------------- */
 
 const boardLoginSchema = z.object({
+  streamer: z.string().max(40),
   slug: z.string().max(48),
   target: z.enum(["queue", "deck"]),
 });
 
 /**
- * /{board}/queue → contraseña de Board Admin.
- * /{board}/deck  → contraseña de streamer (o la de Board Admin, que también puede ver el deck).
+ * /{streamer}/{board}/queue → contraseña de Board Admin.
+ * /{streamer}/{board}/deck  → contraseña de streamer (o la de Board Admin, que también puede ver el deck).
  */
 export async function boardLogin(_prev: AuthState, formData: FormData): Promise<AuthState> {
-  const parsed = boardLoginSchema.safeParse({ slug: str(formData, "slug", 64), target: str(formData, "target", 8) });
+  const parsed = boardLoginSchema.safeParse({
+    streamer: str(formData, "streamer", 64), slug: str(formData, "slug", 64), target: str(formData, "target", 8),
+  });
   if (!parsed.success) return { error: "incorrectBoardPassword" };
   const password = str(formData, "password");
-  const board = await getBoardBySlug(parsed.data.slug);
+  const board = await getBoard(parsed.data.streamer, parsed.data.slug);
 
   const ipKey = await clientKey("board-login");
   const boardKey = board ? `login:board:${board.id}` : null;
@@ -186,14 +194,15 @@ export async function boardLogin(_prev: AuthState, formData: FormData): Promise<
     return { error: "incorrectBoardPassword" };
   }
   await Promise.all([resetRateLimit(ipKey), boardKey ? resetRateLimit(boardKey) : Promise.resolve()]);
-  redirect(`/${board.slug}/${target}`);
+  redirect(`/${board.streamer!.login}/${board.slug}/${target}`);
 }
 
 /* ----------------------- Configuración inicial ----------------------- */
 
 /**
- * Crea el primer Site Admin. Solo funciona mientras no exista ninguna cuenta, y exige la
+ * Crea el Owner (el primer Site Admin). Solo funciona mientras no exista ninguna cuenta del equipo, y exige la
  * contraseña de configuración (la de ADMIN_PASSWORD_HASH), así que un visitante no puede adelantarse.
+ * Después tendrá que activar la verificación en dos pasos, obligatoria para el Owner.
  */
 export async function setupSiteAdmin(_prev: AuthState, formData: FormData): Promise<AuthState> {
   if (!(await rateLimit(await clientKey("setup"), 5, WINDOW))) return { error: "loginRateLimited" };
@@ -215,15 +224,16 @@ export async function setupSiteAdmin(_prev: AuthState, formData: FormData): Prom
   const { data: id, error } = await supabaseAdmin().rpc("bootstrap_site_admin", { p_username: user.data, p_hash: await hashPassword(password) });
   if (error) return { error: error.hint === "ALREADY_SETUP" ? "setupDone" : "db" };
   await signInAccount(id as string, 1);
+  await supabaseAdmin().from("admins").update({ last_login_at: new Date().toISOString() }).eq("id", id as string);
   await audit("setup.completed", { actor: { type: "account", id: id as string, name: user.data } });
-  redirect("/");
+  redirect("/account/2fa");
 }
 
 /* ------------------------- Cambiar contraseña ------------------------- */
 
 export async function changePassword(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const s = await getSession();
-  if (!s.account) return { error: "unauthorized" };
+  if (!s.account || s.account.role === "streamer") return { error: "unauthorized" };
   const acc = s.account;
   if (!(await rateLimit(`pw-change:${acc.id}`, 8, WINDOW))) return { error: "rateLimited" };
 
@@ -247,16 +257,20 @@ export async function changePassword(_prev: AuthState, formData: FormData): Prom
   await signInAccount(row.id, sv as number);
   await resetRateLimit(`pw-change:${acc.id}`);
   await audit("account.password_changed", { actor: accountActor(row), details: { oneTime: row.must_change_password } });
-  if (row.must_change_password) redirect("/");
+  if (row.must_change_password) redirect(landing({ ...row, must_change_password: false }, ""));
   return { ok: true };
 }
 
 /* --------------------- Verificación en dos pasos --------------------- */
 
 /** Prepara la activación: genera un secreto y su QR. No se guarda nada hasta confirmar con un código. */
+/** Cuenta que puede gestionar su 2FA: con contraseña propia ya elegida (los streamers usan la seguridad de Twitch) */
+const totpAccount = (s: Awaited<ReturnType<typeof getSession>>) =>
+  s.account && !s.account.mustChange && s.account.role !== "streamer" ? s.account : null;
+
 export async function startTotpSetup(): Promise<{ ok: true; secret: string; qr: string } | { ok: false; error: string }> {
   const s = await getSession();
-  const acc = s.account && !s.account.mustChange ? s.account : null;
+  const acc = totpAccount(s);
   if (!acc) return { ok: false, error: "unauthorized" };
   if (!(await rateLimit(`totp-setup:${acc.id}`, 20, 3600))) return { ok: false, error: "rateLimited" };
   const secret = newTotpSecret();
@@ -269,7 +283,7 @@ const B32_SECRET = /^[A-Z2-7]{32}$/;
 
 export async function enableTotp(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const s = await getSession();
-  const acc = s.account && !s.account.mustChange ? s.account : null;
+  const acc = totpAccount(s);
   if (!acc) return { error: "unauthorized" };
   if (!(await rateLimit(`totp-change:${acc.id}`, 8, WINDOW))) return { error: "rateLimited" };
 
@@ -291,8 +305,10 @@ export async function enableTotp(_prev: AuthState, formData: FormData): Promise<
 
 export async function disableTotp(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const s = await getSession();
-  const acc = s.account && !s.account.mustChange ? s.account : null;
+  const acc = totpAccount(s);
   if (!acc) return { error: "unauthorized" };
+  // Para el Owner es obligatoria
+  if (acc.role === "owner") return { error: "ownerNeeds2fa" };
   if (!(await rateLimit(`totp-change:${acc.id}`, 8, WINDOW))) return { error: "rateLimited" };
 
   const { data } = await supabaseAdmin().from("admins").select(ADMIN_COLS).eq("id", acc.id).maybeSingle();
@@ -311,6 +327,39 @@ export async function disableTotp(_prev: AuthState, formData: FormData): Promise
   await signInAccount(row.id, sv as number);
   await audit("account.totp_disabled", { actor: accountActor(row) });
   return { ok: true };
+}
+
+/* ----------------- Owner: volver a la contraseña de configuración ----------------- */
+
+/**
+ * El Owner vuelve a la contraseña de configuración (ADMIN_PASSWORD_HASH): se cierran todas sus sesiones y,
+ * al entrar con ella, tendrá que elegir una nueva. Pide un código 2FA actual para confirmarlo.
+ * (Si no puede entrar, el mismo restablecimiento se hace con: npm run reset-owner)
+ */
+export async function resetOwnerPassword(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const s = await getSession();
+  const acc = totpAccount(s);
+  if (!acc || acc.role !== "owner") return { error: "unauthorized" };
+  if (!(await rateLimit(`owner-reset:${acc.id}`, 5, WINDOW))) return { error: "rateLimited" };
+
+  const { data } = await supabaseAdmin().from("admins").select(ADMIN_COLS).eq("id", acc.id).maybeSingle();
+  const row = data as AdminRow | null;
+  if (!row?.totp_secret_enc) return { error: "unauthorized" };
+  const code = totpCodeSchema.safeParse(str(formData, "code", 16));
+  const secret = decryptSecret(row.totp_secret_enc, "totp-v1");
+  const step = code.success && secret ? verifyTotp(secret, code.data) : null;
+  const fresh = step === null ? false : (await supabaseAdmin().rpc("admin_use_totp_step", { p_id: row.id, p_step: step })).data === true;
+  if (!fresh) return { error: "totpInvalid" };
+
+  const { error } = await supabaseAdmin().rpc("owner_reset_password", {
+    p_hash: serverEnv.adminPasswordHash,
+    p_expires: new Date(Date.now() + OTP_HOURS * 3600 * 1000).toISOString(),
+    p_clear_totp: false,
+  });
+  if (error) return { error: "db" };
+  await audit("owner.password_reset", { actor: accountActor(row), details: { via: "panel" } });
+  await destroySession();
+  redirect("/login");
 }
 
 /* ------------------------------ Salir ------------------------------ */

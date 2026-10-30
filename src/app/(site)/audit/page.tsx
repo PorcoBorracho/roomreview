@@ -40,7 +40,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
   const [{ data, error }, { data: boards }] = await Promise.all([
     q,
-    db.from("boards").select("id, title, streamer_name").order("streamer_name").order("title"),
+    db.from("boards").select("id, title, streamer:admins!boards_streamer_id_fkey(username)").order("title"),
   ]);
   if (error) throw new Error("Could not load the audit log");
 
@@ -63,7 +63,9 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       entries={entries}
       category={category}
       board={board}
-      boards={(boards ?? []).map((b) => ({ id: b.id as string, label: b.streamer_name ? `${b.streamer_name} · ${b.title}` : (b.title as string) }))}
+      boards={((boards ?? []) as unknown as { id: string; title: string; streamer: { username: string } | null }[])
+        .map((b) => ({ id: b.id, label: b.streamer ? `${b.streamer.username} · ${b.title}` : b.title }))
+        .sort((x, y) => x.label.localeCompare(y.label))}
       nextBefore={rows.length > PAGE_SIZE ? entries[entries.length - 1].id : null}
       paged={!!before}
       days={AUDIT_DAYS - 1}

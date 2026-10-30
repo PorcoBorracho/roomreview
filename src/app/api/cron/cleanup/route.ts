@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { serverEnv } from "@/lib/env";
-import { AUDIT_DAYS, BUCKET, REPORT_MAX_DAYS, REPORT_RESOLVED_DAYS } from "@/lib/limits";
+import { AUDIT_DAYS, BUCKET, PENDING_STREAMER_DAYS, REPORT_MAX_DAYS, REPORT_RESOLVED_DAYS } from "@/lib/limits";
 import { safeEqual } from "@/lib/crypto";
 import { removeObjects } from "@/lib/media";
 import { LEGAL } from "@/config/legal";
@@ -61,11 +61,19 @@ export async function GET(req: Request) {
   // Registro de auditoría: se conserva 365 días (la base de datos impide borrar antes)
   const { data: a } = await db.from("audit_log").delete().lt("created_at", new Date(Date.now() - AUDIT_DAYS * day).toISOString()).select("id");
 
+  // Solicitudes de streamer que nadie ha aprobado en PENDING_STREAMER_DAYS días
+  const { data: st } = await db.from("admins").delete().eq("role", "streamer").eq("status", "pending")
+    .lt("created_at", new Date(Date.now() - PENDING_STREAMER_DAYS * day).toISOString()).select("id");
+  const pendingStreamers = st?.length ?? 0;
+
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   await db.from("rate_limits").delete().lt("window_start", dayAgo);
 
-  if (removed || expiredCount || reports || a?.length) {
-    await audit("system.cleanup", { actor: { type: "system" }, details: { incomplete: removed, expired: expiredCount, reports, auditEntries: a?.length ?? 0 } });
+  if (removed || expiredCount || reports || a?.length || pendingStreamers) {
+    await audit("system.cleanup", {
+      actor: { type: "system" },
+      details: { incomplete: removed, expired: expiredCount, reports, auditEntries: a?.length ?? 0, pendingStreamers },
+    });
   }
-  return NextResponse.json({ ok: true, removed, expired: expiredCount, reports });
+  return NextResponse.json({ ok: true, removed, expired: expiredCount, reports, pendingStreamers });
 }

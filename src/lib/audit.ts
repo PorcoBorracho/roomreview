@@ -12,10 +12,14 @@ import { getSession } from "./session";
 export const AUDIT_ACTIONS = [
   // Inicio de sesión
   "account.login", "account.login_failed", "account.mfa_failed", "board.login", "board.login_failed", "setup.completed",
+  "streamer.login", "streamer.requested",
   // Cuenta propia
-  "account.password_changed", "account.totp_enabled", "account.totp_disabled",
+  "account.password_changed", "account.totp_enabled", "account.totp_disabled", "owner.password_reset",
   // Cuentas (Site Admin)
   "admin.created", "admin.password_reset", "admin.role_changed", "admin.deleted",
+  // Streamers y sus equipos
+  "streamer.approved", "streamer.rejected", "streamer.suspended", "streamer.reactivated",
+  "team.admin_added", "team.admin_created", "team.admin_removed",
   // Boards
   "board.created", "board.updated", "board.flag_changed", "board.deleted",
   "board.password_viewed", "board.password_regenerated", "board.shared", "board.unshared",
@@ -29,8 +33,9 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export const AUDIT_CATEGORIES: Record<string, string[]> = {
-  signin: ["account.login", "account.login_failed", "account.mfa_failed", "board.login", "board.login_failed", "setup.completed"],
-  accounts: ["account.password_changed", "account.totp_enabled", "account.totp_disabled", "admin.created", "admin.password_reset", "admin.role_changed", "admin.deleted"],
+  signin: ["account.login", "account.login_failed", "account.mfa_failed", "board.login", "board.login_failed", "setup.completed", "streamer.login", "streamer.requested"],
+  accounts: ["account.password_changed", "account.totp_enabled", "account.totp_disabled", "owner.password_reset", "admin.created", "admin.password_reset", "admin.role_changed", "admin.deleted"],
+  streamers: ["streamer.approved", "streamer.rejected", "streamer.suspended", "streamer.reactivated", "team.admin_added", "team.admin_created", "team.admin_removed"],
   boards: ["board.created", "board.updated", "board.flag_changed", "board.deleted", "board.password_viewed", "board.password_regenerated", "board.shared", "board.unshared"],
   moderation: ["submission.approved", "submission.unapproved", "submission.deleted", "submission.self_deleted"],
   problems: ["report.resolved", "report.reopened", "report.deleted"],

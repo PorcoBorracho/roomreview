@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { requireBoardPage } from "@/lib/session";
 import { getT } from "@/i18n/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getBoardBySlug } from "@/lib/boards";
-import { signPaths } from "@/lib/media";
+import { getBoard } from "@/lib/boards";
+import { mediaKind, signPaths } from "@/lib/media";
 import AdminQueue from "@/components/AdminQueue";
 import type { AdminSubmission } from "@/lib/types";
 
@@ -14,7 +14,7 @@ const PAGE_SIZE = 25;
 type Row = {
   id: string; username: string; email: string; country: string; description: string;
   status: "pending" | "approved"; submitted_at: string;
-  submission_media: { id: string; storage_path: string; position: number }[];
+  submission_media: { id: string; storage_path: string; position: number; content_type: string }[];
 };
 
 function sanitizeSearch(q: string) {
@@ -25,11 +25,11 @@ function sanitizeSearch(q: string) {
 export default async function QueuePage({
   params,
   searchParams,
-}: { params: Promise<{ slug: string }>; searchParams: Promise<{ status?: string; q?: string; page?: string }> }) {
-  const { slug } = await params;
-  const board = await getBoardBySlug(slug);
-  if (!board) notFound();
-  await requireBoardPage(board.id, "moderate", `/${slug}/queue`);
+}: { params: Promise<{ streamer: string; board: string }>; searchParams: Promise<{ status?: string; q?: string; page?: string }> }) {
+  const p = await params;
+  const board = await getBoard(p.streamer, p.board);
+  if (!board?.streamer) notFound();
+  await requireBoardPage(board.id, "moderate", `/${board.streamer.login}/${board.slug}/queue`);
 
   const sp = await searchParams;
   const status = sp.status === "approved" || sp.status === "all" ? sp.status : "pending";
@@ -39,7 +39,7 @@ export default async function QueuePage({
   const db = supabaseAdmin();
   let query = db
     .from("submissions")
-    .select("id, username, email, country, description, status, submitted_at, submission_media(id, storage_path, position)", { count: "exact" })
+    .select("id, username, email, country, description, status, submitted_at, submission_media(id, storage_path, position, content_type)", { count: "exact" })
     .eq("board_id", board.id)
     .neq("status", "uploading")
     .order("submitted_at", { ascending: true })
@@ -70,7 +70,7 @@ export default async function QueuePage({
     submittedAt: r.submitted_at,
     media: [...r.submission_media]
       .sort((a, b) => a.position - b.position)
-      .map((m) => ({ id: m.id, url: urls.get(m.storage_path) ?? "" }))
+      .map((m) => ({ id: m.id, url: urls.get(m.storage_path) ?? "", kind: mediaKind(m.content_type) }))
       .filter((m) => m.url),
   }));
 

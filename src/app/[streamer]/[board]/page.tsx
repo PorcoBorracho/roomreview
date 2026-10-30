@@ -3,40 +3,47 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import SubmitForm from "@/components/SubmitForm";
-import { getBoardBySlug } from "@/lib/boards";
+import { getBoard, isPublic } from "@/lib/boards";
 import { boardAccess } from "@/lib/session";
 import { LEGAL } from "@/config/legal";
 import { getT } from "@/i18n/server";
+import StreamerAvatar from "@/components/StreamerAvatar";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const board = await getBoardBySlug((await params).slug);
-  if (!board || !board.isActive) return { title: (await getT()).meta.notFound, robots: { index: false } };
+type Params = Promise<{ streamer: string; board: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const p = await params;
+  const board = await getBoard(p.streamer, p.board);
+  if (!board || !isPublic(board)) return { title: (await getT()).meta.notFound, robots: { index: false } };
   return {
-    title: { absolute: `${board.title} · ${board.streamerName || LEGAL.projectName}` },
+    title: { absolute: `${board.title} · ${board.streamer?.displayName ?? LEGAL.projectName}` },
     description: board.description.slice(0, 160) || undefined,
   };
 }
 
-export default async function BoardPage({ params }: { params: Promise<{ slug: string }> }) {
-  const board = await getBoardBySlug((await params).slug);
+export default async function BoardPage({ params }: { params: Params }) {
+  const p = await params;
+  const board = await getBoard(p.streamer, p.board);
   // Un board inactivo no existe para el público; el equipo puede previsualizarlo
-  if (!board || (!board.isActive && !(await boardAccess(board.id)).view)) notFound();
+  if (!board || !board.streamer || (!isPublic(board) && !(await boardAccess(board.id)).view)) notFound();
   const t = await getT();
+  const streamer = board.streamer;
 
-  const open = board.isActive && board.submissionsOpen;
+  const open = isPublic(board) && board.submissionsOpen;
 
   return (
     <div className="mx-auto grid max-w-[1320px] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,42rem)] lg:gap-16 xl:gap-24">
       <section className="lg:sticky lg:top-24 lg:self-start lg:pt-4">
         <h1 className="text-4xl leading-[1.05] font-extrabold tracking-tight text-strong sm:text-5xl xl:text-6xl">{board.title}</h1>
-        {board.streamerName && (
-          <p className="mt-4 text-[15px] text-muted">
-            {t.board.hostedBy(board.streamerName)}
-            {board.platform !== "other" && t.board.liveOn(t.platforms[board.platform])}
-          </p>
-        )}
+        <p className="mt-4 flex items-center gap-2.5 text-[15px] text-muted">
+          <StreamerAvatar streamer={streamer} size="sm" />
+          <span>
+            {t.board.hostedBy(<Link href={`/${streamer.login}`} className="font-semibold text-ink hover:underline">{streamer.displayName}</Link>)}
+            {t.board.liveOn("Twitch")}
+          </span>
+        </p>
         {board.description && (
           <p className="mt-5 max-w-[56ch] text-[17px] leading-relaxed whitespace-pre-line text-muted">{board.description}</p>
         )}
@@ -64,7 +71,7 @@ export default async function BoardPage({ params }: { params: Promise<{ slug: st
 
       <div className="rounded-2xl border border-line bg-card p-5 shadow-raised sm:p-8">
         {open ? (
-          <SubmitForm boardId={board.id} peopleAllowed={board.peopleAllowed} streamerName={board.streamerName} platform={board.platform} />
+          <SubmitForm boardId={board.id} peopleAllowed={board.peopleAllowed} allowVideos={board.allowVideos} streamerName={streamer.displayName} />
         ) : (
           <div className="py-12 text-center">
             <span className="mx-auto flex size-11 items-center justify-center rounded-xl bg-raised text-muted">

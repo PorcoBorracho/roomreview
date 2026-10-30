@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { slugProblem } from "./slug";
-import { PLATFORM_KEYS } from "./platforms";
-import { ALLOWED_TYPES, MAX_DESCRIPTION, MAX_FILE_BYTES, MAX_FILES } from "./limits";
+import { ALLOWED_TYPES, MAX_DESCRIPTION, MAX_FILE_BYTES, MAX_FILES, MAX_VIDEO_BYTES, MAX_VIDEOS, isVideoType } from "./limits";
 
 /*
  * Los mensajes de error son CLAVES del diccionario (src/i18n/dict, sección "errors"),
@@ -31,14 +30,17 @@ export const submissionSchema = z.object({
     .pipe(z.string().min(1, "descriptionRequired").max(MAX_DESCRIPTION, "descriptionTooLong")),
   files: z
     .array(
-      z.object({
-        type: z.enum(ALLOWED_TYPES, "uploadInvalid"),
-        size: z.number().int().positive().max(MAX_FILE_BYTES, "photoTooLarge"),
-      }),
+      z
+        .object({
+          type: z.enum(ALLOWED_TYPES, "uploadInvalid"),
+          size: z.number().int().positive(),
+        })
+        .refine((f) => f.size <= (isVideoType(f.type) ? MAX_VIDEO_BYTES : MAX_FILE_BYTES), "photoTooLarge"),
       "photosRange",
     )
     .min(1, "photosRange")
-    .max(MAX_FILES, "photosRange"),
+    .max(MAX_FILES, "photosRange")
+    .refine((files) => files.filter((f) => isVideoType(f.type)).length <= MAX_VIDEOS, "tooManyVideos"),
   turnstileToken: z.string("captchaMissing").min(1, "captchaMissing").max(2048, "captchaFailed"),
   // Consentimientos explícitos (RGPD art. 7): casillas sin marcar por defecto, todas obligatorias
   consents: z.object({
@@ -60,11 +62,7 @@ export const deletionCodeSchema = z
   .pipe(z.string().regex(/^RR[A-Z0-9]{20}$/, "codeInvalid"));
 
 export const boardSchema = z.object({
-  streamerName: z
-    .string("streamerRequired")
-    .transform((s) => clean(s).replace(/^@+/, ""))
-    .pipe(z.string().min(1, "streamerRequired").max(40, "streamerRequired").regex(/^[\p{L}\p{N} _.\-]+$/u, "streamerRequired")),
-  platform: z.enum(PLATFORM_KEYS, "invalidData"),
+  streamerId: z.uuid("streamerRequired"),
   title: z.string("titleRequired").transform(clean).pipe(z.string().min(1, "titleRequired").max(80, "titleRequired")),
   slug: z
     .string("slugInvalid")
@@ -80,6 +78,8 @@ export const boardSchema = z.object({
   isActive: z.boolean(),
   submissionsOpen: z.boolean(),
   peopleAllowed: z.boolean(),
+  blurNew: z.boolean(),
+  allowVideos: z.boolean(),
 });
 export type BoardInput = z.input<typeof boardSchema>;
 
@@ -132,6 +132,6 @@ export const reportSchema = z.object({
     .transform((s) => clean(s).slice(0, 200))
     // Solo rutas internas: nada de URLs externas en la base de datos
     .pipe(z.union([z.literal(""), z.string().regex(/^\/[A-Za-z0-9/_\-.]*$/, "invalidData")])),
-  boardSlug: z.string().max(48).optional(),
+  boardId: z.uuid().optional(),
   turnstileToken: z.string("captchaMissing").min(1, "captchaMissing").max(2048, "captchaFailed"),
 });

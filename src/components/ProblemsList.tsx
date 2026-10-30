@@ -15,7 +15,7 @@ import { Pill } from "./Pill";
 export type ProblemItem = {
   id: string; page: string; category: string; message: string; email: string | null; locale: string;
   status: "open" | "resolved"; createdAt: string; resolvedAt: string | null;
-  board: { slug: string; title: string } | null;
+  board: { title: string; href: string | null } | null;
 };
 
 const TONE: Record<string, "warning" | "accent" | "muted"> = { privacy: "warning", content: "warning", bug: "accent", access: "accent", other: "muted" };
@@ -85,7 +85,7 @@ export default function ProblemsList({ items, status, openCount }: { items: Prob
               <dl className="mt-4 grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-3">
                 <div>
                   <dt className="text-subtle">{t.problems.board}</dt>
-                  <dd className="mt-0.5 truncate text-ink">{p.board ? <Link href={`/${p.board.slug}`} className="text-accent-text hover:underline">{p.board.title}</Link> : "—"}</dd>
+                  <dd className="mt-0.5 truncate text-ink">{p.board ? (p.board.href ? <Link href={p.board.href} className="text-accent-text hover:underline">{p.board.title}</Link> : p.board.title) : "—"}</dd>
                 </div>
                 <div>
                   <dt className="text-subtle">{t.problems.page}</dt>

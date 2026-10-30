@@ -25,6 +25,20 @@ export function sniffImageType(bytes: Uint8Array): "image/jpeg" | "image/png" | 
   return null;
 }
 
+/**
+ * Firma de un vídeo: MP4 (caja "ftyp" en el byte 4, sin la marca de QuickTime "qt  ") o WebM (cabecera EBML).
+ */
+export function sniffVideoType(bytes: Uint8Array): "video/mp4" | "video/webm" | null {
+  if (bytes.length >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+    return brand === "qt  " ? null : "video/mp4";
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "video/webm";
+  return null;
+}
+
+export const mediaKind = (contentType: string) => (contentType.startsWith("video/") ? "video" : "image") as "image" | "video";
+
 export async function removeObjects(paths: string[]) {
   if (paths.length === 0) return;
   for (let i = 0; i < paths.length; i += 100) {

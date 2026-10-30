@@ -19,7 +19,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
-      ...["/", "/login", "/setup", "/admins", "/problems", "/audit", "/account", "/account/password", "/:slug/queue", "/:slug/deck"].map((source) => ({
+      // Páginas privadas: nunca en caché ni en buscadores
+      ...[
+        "/login", "/setup", "/panel", "/streamers", "/team", "/admins", "/problems", "/audit",
+        "/account", "/account/password", "/account/2fa", "/:streamer/:board/queue", "/:streamer/:board/deck",
+      ].map((source) => ({
         source,
         headers: [
           { key: "Cache-Control", value: "no-store, max-age=0" },

@@ -6,7 +6,7 @@ import { rateLimit } from "@/lib/ratelimit";
 import { clientIp, clientKey } from "@/lib/request";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getBoardBySlug } from "@/lib/boards";
+import { getBoardById } from "@/lib/boards";
 import { getLocale } from "@/i18n/server";
 import { AuthError, requireSiteAdmin } from "@/lib/session";
 import { audit } from "@/lib/audit";
@@ -27,7 +27,7 @@ export async function submitReport(_prev: ReportState, formData: FormData): Prom
     message: str(formData, "message", 4000),
     email: str(formData, "email", 300),
     page: str(formData, "page", 300),
-    boardSlug: str(formData, "board", 48) || undefined,
+    boardId: str(formData, "board", 48) || undefined,
     turnstileToken: str(formData, "cf-turnstile-response", 2048),
   });
   if (!parsed.success) return { error: firstError(parsed.error) };
@@ -36,7 +36,7 @@ export async function submitReport(_prev: ReportState, formData: FormData): Prom
   if (!(await rateLimit("report:global", 200, 3600))) return { error: "serviceBusy" };
   if (!(await verifyTurnstile(parsed.data.turnstileToken, await clientIp(), "report"))) return { error: "captchaFailed" };
 
-  const board = parsed.data.boardSlug ? await getBoardBySlug(parsed.data.boardSlug) : null;
+  const board = parsed.data.boardId ? await getBoardById(parsed.data.boardId) : null;
   const { error } = await supabaseAdmin().from("problem_reports").insert({
     board_id: board?.id ?? null,
     page: parsed.data.page,

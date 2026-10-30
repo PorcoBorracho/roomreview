@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Lock, Loader2, Tv, ShieldCheck, Smartphone, ArrowRight } from "lucide-react";
+import { Lock, Loader2, Tv, ShieldCheck, Smartphone, ArrowRight, Info, Clock } from "lucide-react";
 import { accountLogin, boardLogin, verifyLoginTotp, type AuthState } from "@/actions/auth";
 import { useT } from "@/i18n/client";
 import Turnstile from "./Turnstile";
@@ -13,12 +13,18 @@ type Props = {
   next: string;
   mode: "account" | "board";
   target: "queue" | "deck";
+  /** Login del streamer y nombre del board (modo board) */
+  streamer: string;
   slug: string;
   boardTitle?: string;
   streamerName?: string;
   hasBoardSession: boolean;
   setupNeeded: boolean;
   alreadySignedIn: boolean;
+  /** ¿Está configurada la entrada con Twitch? */
+  twitch: boolean;
+  /** Resultado de una entrada con Twitch (?twitch=…) */
+  notice: "pending" | "suspended" | "denied" | "error" | "reserved" | "full" | "off" | "busy" | null;
 };
 
 export function SubmitButton({ pending, children, pendingLabel }: { pending: boolean; children: React.ReactNode; pendingLabel: string }) {
@@ -49,6 +55,10 @@ export default function LoginForm(props: Props) {
     : props.hasBoardSession ? t.login.needsAccount : t.login.adminIntro;
   const accountHref = `/login?next=${encodeURIComponent(props.next)}&with=account`;
   const boardHref = `/login?next=${encodeURIComponent(props.next)}`;
+  // Twitch: para los streamers. Desde el login de un deck se vuelve a ese deck.
+  const twitchNext = props.next && !props.next.endsWith("/queue") ? props.next : "";
+  const twitchHref = `/api/auth/twitch${twitchNext ? `?next=${encodeURIComponent(twitchNext)}` : ""}`;
+  const showTwitch = props.twitch && !(board && queue);
 
   return (
     <div className="enter-zoom w-full max-w-sm rounded-2xl border border-line bg-card p-6 shadow-float sm:p-7">
@@ -57,6 +67,24 @@ export default function LoginForm(props: Props) {
       </div>
       <h1 className="mt-4 text-xl font-bold tracking-tight text-strong">{board ? props.boardTitle : t.login.adminTitle}</h1>
       <p className="mt-1 text-sm leading-relaxed text-pretty text-muted">{intro}</p>
+
+      {props.notice && (
+        <p role="status" className={`mt-4 flex items-start gap-2 rounded-xl border px-3.5 py-3 text-sm leading-relaxed ${
+          props.notice === "pending" ? "border-accent/30 bg-accent/[0.06] text-ink" : "border-warning/30 bg-warning/[0.06] text-ink"}`}>
+          {props.notice === "pending" ? <Clock className="mt-0.5 size-4 shrink-0 text-accent-text" /> : <Info className="mt-0.5 size-4 shrink-0 text-warning-text" />}
+          <span>{t.login.twitchNotice[props.notice]}</span>
+        </p>
+      )}
+
+      {showTwitch && !board && (
+        <>
+          <TwitchButton href={twitchHref} label={t.login.twitchButton} />
+          <p className="mt-2 text-center text-xs text-subtle">{t.login.twitchHint}</p>
+          <div className="my-5 flex items-center gap-3 text-xs text-subtle" aria-hidden>
+            <span className="h-px flex-1 bg-line" /> {t.login.orStaff} <span className="h-px flex-1 bg-line" />
+          </div>
+        </>
+      )}
 
       {props.setupNeeded && (
         <p className="mt-4 rounded-xl border border-line bg-well px-3.5 py-3 text-sm text-muted">
@@ -69,6 +97,7 @@ export default function LoginForm(props: Props) {
         <input type="hidden" name="next" value={props.next} />
         {board && (
           <>
+            <input type="hidden" name="streamer" value={props.streamer} />
             <input type="hidden" name="slug" value={props.slug} />
             <input type="hidden" name="target" value={props.target} />
           </>
@@ -93,10 +122,13 @@ export default function LoginForm(props: Props) {
         </SubmitButton>
       </form>
 
-      {!props.alreadySignedIn && (
+      {!props.alreadySignedIn && (board || props.slug) && (
         <p className="mt-5 border-t border-line pt-4 text-center text-[13px] text-muted">
           {board ? (
             <>
+              {showTwitch && (
+                <a href={twitchHref} className="mb-2 block font-semibold text-accent-text hover:underline">{t.login.twitchDeck}</a>
+              )}
               {t.login.haveAccount}{" "}
               <Link href={accountHref} className="font-semibold text-accent-text hover:underline">{t.login.useAccount}</Link>
             </>
@@ -106,6 +138,17 @@ export default function LoginForm(props: Props) {
         </p>
       )}
     </div>
+  );
+}
+
+/** Botón para entrar con Twitch (un <a> normal, no un Link de Next: /api no se precarga) */
+function TwitchButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href}
+      className="pressable mt-6 flex h-11 w-full items-center justify-center gap-2.5 rounded-xl bg-[#9146FF] text-sm font-semibold text-white shadow-raised hover:bg-[#7c3aed]">
+      <Tv aria-hidden className="size-4" />
+      {label}
+    </a>
   );
 }
 

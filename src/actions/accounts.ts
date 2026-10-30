@@ -18,6 +18,12 @@ async function usernameOf(id: string): Promise<string | null> {
   return (data?.username as string | undefined) ?? null;
 }
 
+/** Rol de una cuenta: el Owner y los streamers no se gestionan desde aquí */
+async function roleOf(id: string): Promise<string | null> {
+  const { data } = await supabaseAdmin().from("admins").select("role").eq("id", id).maybeSingle();
+  return (data?.role as string | undefined) ?? null;
+}
+
 async function siteAdmin<R>(fn: (actorId: string) => Promise<R>): Promise<R | { ok: false; error: string }> {
   try {
     const acc = await requireSiteAdmin();
@@ -62,6 +68,10 @@ export async function resetAdminPassword(id: string): Promise<Result<{ password:
   return siteAdmin(async (actorId) => {
     if (!uuidSchema.safeParse(id).success) return { ok: false, error: "invalidData" };
     if (id === actorId) return { ok: false, error: "resetSelf" };
+    const role = await roleOf(id);
+    if (!role) return { ok: false, error: "adminNotFound" };
+    // La del Owner solo vuelve a la de configuración (desde su cuenta o con npm run reset-owner)
+    if (role !== "admin" && role !== "site_admin") return { ok: false, error: "ownerProtected" };
     const password = generateServerPassword();
     const { error } = await supabaseAdmin().rpc("admin_set_password", {
       p_id: id, p_hash: await hashPassword(password), p_must_change: true, p_expires: expiry(), p_clear_totp: true,
@@ -73,7 +83,7 @@ export async function resetAdminPassword(id: string): Promise<Result<{ password:
   });
 }
 
-/** Dar o quitar el rol de Site Admin. Nunca deja la web sin ninguno (comprobado en la base de datos). */
+/** Dar o quitar el rol de Site Admin (el Owner no se puede cambiar; comprobado en la base de datos). */
 export async function setAdminRole(id: string, role: "admin" | "site_admin"): Promise<Result> {
   return siteAdmin(async () => {
     if (!uuidSchema.safeParse(id).success || (role !== "admin" && role !== "site_admin")) return { ok: false, error: "invalidData" };
@@ -81,6 +91,7 @@ export async function setAdminRole(id: string, role: "admin" | "site_admin"): Pr
     if (error) {
       if (error.hint === "LAST_SITE_ADMIN") return { ok: false, error: "lastSiteAdmin" };
       if (error.hint === "NOT_FOUND") return { ok: false, error: "adminNotFound" };
+      if (error.hint === "PROTECTED") return { ok: false, error: "ownerProtected" };
       return { ok: false, error: "db" };
     }
     await audit("admin.role_changed", { target: { id, name: await usernameOf(id) }, details: { role } });
@@ -89,7 +100,7 @@ export async function setAdminRole(id: string, role: "admin" | "site_admin"): Pr
   });
 }
 
-/** Borra una cuenta; sus boards pasan a quien la borra. */
+/** Borra una cuenta del equipo (nunca el Owner); sus boards pasan a quien la borra. */
 export async function deleteAdmin(id: string): Promise<Result> {
   return siteAdmin(async (actorId) => {
     if (!uuidSchema.safeParse(id).success) return { ok: false, error: "invalidData" };
@@ -97,8 +108,8 @@ export async function deleteAdmin(id: string): Promise<Result> {
     const { error } = await supabaseAdmin().rpc("delete_admin", { p_target: id, p_actor: actorId });
     if (error) {
       if (error.hint === "SELF") return { ok: false, error: "cantDeleteSelf" };
-      if (error.hint === "LAST_SITE_ADMIN") return { ok: false, error: "lastSiteAdmin" };
       if (error.hint === "NOT_FOUND") return { ok: false, error: "adminNotFound" };
+      if (error.hint === "PROTECTED") return { ok: false, error: "ownerProtected" };
       return { ok: false, error: "db" };
     }
     await audit("admin.deleted", { target: { id, name } });

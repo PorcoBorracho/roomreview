@@ -10,7 +10,7 @@ import FormError from "./FormError";
 import { SubmitButton } from "./LoginForm";
 import { useFormAction } from "./useFormAction";
 
-type Props = { page: string; boardSlug: string; boardTitle: string; retentionDays: number };
+type Props = { page: string; boardId: string; boardTitle: string; retentionDays: number };
 
 // Debe coincidir con REPORT_CATEGORIES (lib/validation.ts) y el CHECK de problem_reports
 const CATEGORIES = ["bug", "privacy", "content", "access", "other"] as const;
@@ -21,7 +21,7 @@ export default function ReportForm(props: Props) {
   return <ReportFormInner key={round} {...props} onAnother={() => setRound((r) => r + 1)} />;
 }
 
-function ReportFormInner({ page, boardSlug, boardTitle, retentionDays, onAnother }: Props & { onAnother: () => void }) {
+function ReportFormInner({ page, boardId, boardTitle, retentionDays, onAnother }: Props & { onAnother: () => void }) {
   const t = useT();
   const [state, action, pending] = useFormAction<ReportState>(submitReport, {});
   const [captchaKey, setCaptchaKey] = useState(0);
@@ -49,7 +49,7 @@ function ReportFormInner({ page, boardSlug, boardTitle, retentionDays, onAnother
   return (
     <form onSubmit={action} className="space-y-5">
       <input type="hidden" name="page" value={page} />
-      <input type="hidden" name="board" value={boardSlug} />
+      <input type="hidden" name="board" value={boardId} />
       {(boardTitle || page) && (
         <p className="rounded-xl border border-line bg-well px-3.5 py-2.5 text-[13px] text-muted">
           <span className="font-medium text-ink">{t.report.about}:</span> {boardTitle || <span className="font-mono">{page}</span>}

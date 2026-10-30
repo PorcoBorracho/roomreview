@@ -9,7 +9,7 @@ const en: PrivacyDoc = {
   sections: ({ L, mail, del, report, controller, reportResolvedDays, reportMaxDays, auditDays }) => [
     { id: "summary", title: "In short", body: (
       <ul>
-        <li>We only use what you send (form and photos) to review it and, if a moderator approves it, show it live.</li>
+        <li>We only use what you send (form, photos and, on boards that allow it, a video) to review it and, if a moderator approves it, show it live.</li>
         <li>Your email is never shown on stream.</li>
         <li>The stream is public: once shown, copies made by others can&apos;t be fully removed.</li>
         <li>You can delete your submission at any time with your deletion code; otherwise it&apos;s deleted after {L.retentionDays} days.</li>
@@ -25,7 +25,7 @@ const en: PrivacyDoc = {
             {
               id: "submissions",
               title: "Your submission",
-              what: <>Username, email, country, description, the board you chose and your photos (with location and camera data removed in your browser).</>,
+              what: <>Username, email, country, description, the board you chose, your photos and, on boards that allow it, one video. Location and camera data are removed in your browser; videos are also compressed there and sent without sound.</>,
               why: "Reviewing it and, if approved, showing it live. The email is only for contacting you about it.",
               basis: "Your consent (GDPR art. 6(1)(a)), which you can withdraw at any time.",
               kept: <><strong>{L.retentionDays} days</strong>, or until you or a moderator delete it. Incomplete uploads: 24 hours.</>,
@@ -53,6 +53,14 @@ const en: PrivacyDoc = {
               kept: "Attempt counters: 48 hours.",
             },
             {
+              id: "streamers",
+              title: "Streamer accounts (Twitch)",
+              what: <>Only for streamers: your Twitch user ID, login and display name, the link to your profile picture, your account status and sign-in dates, and the Admins in your team. We don&apos;t receive your Twitch email or password, and we don&apos;t keep any Twitch token.</>,
+              why: "Confirming you are the streamer, showing your public page and boards, and managing who can help you.",
+              basis: "Providing the service you ask for (art. 6(1)(b)) and our legitimate interest in preventing impersonation (art. 6(1)(f)).",
+              kept: "While your account exists. Requests that aren't approved are deleted after 30 days.",
+            },
+            {
               id: "staff",
               title: "Staff accounts and activity log",
               what: <>For administrators: username, role, a hash of the password, the encrypted two-step key and last sign-in. An <strong>activity log</strong> records who did what and when (sign-ins, approvals, deletions, changes to boards and accounts) with a pseudonymised connection identifier. It never includes senders&apos; details.</>,
@@ -69,17 +77,19 @@ const en: PrivacyDoc = {
       <ul>
         <li>Only send photos you took or have rights to, and that you&apos;re allowed to share.</li>
         <li>No people in the photos, except on boards that allow it (such as costume reviews): there, only you or adults who agreed to appear. <strong>Never children.</strong></li>
-        <li>You give {L.controllerName} and <strong>the streamer named on the board</strong> a free, non-exclusive licence, revocable at any time, to show the photos, username, country and description on <strong>that streamer&apos;s live streams</strong>, recordings and highlights. Nothing else: no sale, advertising, other publication or AI training.</li>
+        <li>You give {L.controllerName} and <strong>the streamer named on the board</strong> a free, non-exclusive licence, revocable at any time, to show the photos and video, username, country and description on <strong>that streamer&apos;s live streams</strong>, recordings and highlights. Nothing else: no sale, advertising, other publication or AI training.</li>
         <li>Moderators may reject, delete, blur or skip any photo to protect privacy.</li>
         <li>Anyone can watch, record and clip the stream. If you withdraw, we stop showing your photos and delete the recordings and clips we control where the platform allows; we can&apos;t delete copies made by others.</li>
       </ul>
     )},
     { id: "recipients", title: "4. Who can see your data", body: (
       <ul>
-        <li><strong>The board&apos;s team</strong>: the admin who created it, admins it&apos;s shared with, and its Board Admins (moderators with the queue password). They see everything for that board only.</li>
+        <li><strong>The board&apos;s team</strong>: the streamer&apos;s team (up to two Admins they choose), the admin who created the board, admins it&apos;s shared with, and its Board Admins (moderators with the queue password). They see everything for that board only.</li>
         <li><strong>Site Admins</strong> (who run the site): all boards, problem reports and the activity log.</li>
-        <li><strong>The streamer</strong>: approved photos, username, country and description of their board. Never your email.</li>
+        <li><strong>The streamer</strong>: approved photos and videos, username, country and description of their board. Never your email. Streamers don&apos;t see the queue.</li>
         <li><strong>The stream audience</strong>: the same, only once approved.</li>
+        <li><strong>Everyone</strong>, for streamers only: your public page shows your Twitch name, profile picture and active boards, and you can be found in the search.</li>
+        <li><strong>Twitch</strong> (Twitch Interactive, Inc.), only when a streamer signs in with it: Twitch handles that sign-in under its own privacy policy and tells us who you are.</li>
         <li><strong>Providers</strong> working for us under data processing agreements: Supabase (database and photos, region {L.databaseRegion}), Vercel (hosting, short-lived technical logs) and Cloudflare (anti-bot check). Where they access data from the US, transfers are covered by the EU-U.S. Data Privacy Framework and/or Standard Contractual Clauses (arts. 45 and 46).</li>
         <li>Authorities, only if the law requires it.</li>
       </ul>
@@ -102,13 +112,14 @@ const en: PrivacyDoc = {
         <ul>
           <li>Cloudflare Turnstile security cookies, on forms with the anti-bot check.</li>
           <li>Staff session (12 hours) and two-step sign-in step (5 minutes).</li>
+          <li>Twitch sign-in check (10 minutes), only while a streamer signs in with Twitch.</li>
           <li>Language (1 year), only if you choose one in the menu.</li>
         </ul>
         <p>Your colour theme is saved in your browser and never sent to us.</p>
       </>
     )},
     { id: "security", title: "7. Security", body: (
-      <p>Photos are in private storage and only shown through temporary links. Only Site Admins can create staff accounts, which use strong hashed passwords and optional two-step verification. Each board has separate queue and deck passwords that can be regenerated at any time to revoke access. Traffic is encrypted (HTTPS), sign-ins are protected against bots and brute force, and only our server can reach the database.</p>
+      <p>Photos and videos are in private storage and only shown through temporary links. Only Site Admins create staff accounts, and streamers can add up to two Admins to their own team; staff use strong hashed passwords and two-step verification (required for the Owner). Streamers sign in with Twitch and must be approved before creating boards. Each board has separate queue and deck passwords that can be regenerated at any time to revoke access. Traffic is encrypted (HTTPS), sign-ins are protected against bots and brute force, and only our server can reach the database.</p>
     )},
     { id: "minors", title: "8. Minimum age", body: (
       <p>You must be {L.minAge} or older to submit. If we learn that a submission comes from or shows a minor, we delete it.</p>

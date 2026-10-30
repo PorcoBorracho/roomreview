@@ -25,16 +25,19 @@ type Props = {
 
 const ACTOR_ICON = { account: UserRound, moderator: ShieldCheck, streamer: Tv, visitor: Globe, system: Bot } as const;
 // Las acciones fallidas o de borrado se marcan para que destaquen al revisar
-const WARN = new Set(["account.login_failed", "account.mfa_failed", "board.login_failed", "board.deleted", "admin.deleted", "account.totp_disabled"]);
+const WARN = new Set([
+  "account.login_failed", "account.mfa_failed", "board.login_failed", "board.deleted", "admin.deleted", "account.totp_disabled",
+  "owner.password_reset", "streamer.suspended", "streamer.rejected",
+]);
 
 /** Texto legible de los detalles guardados (sin datos personales: solo qué se tocó) */
 function detailChips(t: Dict, e: AuditEntry): string[] {
   const d = e.details;
   const out: string[] = [];
   const FIELD: Record<string, string> = {
-    streamerName: t.boardDialog.streamer, platform: t.boardDialog.streamsOn, title: t.boardDialog.title, slug: t.boardDialog.address,
+    streamer: t.boardDialog.streamer, title: t.boardDialog.title, slug: t.boardDialog.address,
     description: t.boardDialog.description, isActive: t.boardDialog.activeLabel, submissionsOpen: t.boardDialog.acceptingLabel,
-    peopleAllowed: t.boardDialog.peopleLabel,
+    peopleAllowed: t.boardDialog.peopleLabel, blurNew: t.boardDialog.blurLabel, allowVideos: t.boardDialog.videosLabel,
   };
   if (d.kind === "moderator") out.push(t.dashboard.moderatorAccess);
   if (d.kind === "streamer") out.push(t.dashboard.streamerAccess);
@@ -44,12 +47,14 @@ function detailChips(t: Dict, e: AuditEntry): string[] {
   }
   if (Array.isArray(d.fields)) out.push(...d.fields.map((f) => FIELD[String(f)] ?? String(f)));
   if (typeof d.slug === "string") out.push(`/${d.slug}`);
+  if (typeof d.streamer === "string" && d.streamer) out.push(`@${d.streamer}`);
+  if (d.isNew === true) out.push(t.audit.newRequest);
   if (d.page === "queue") out.push(t.board.queue);
   if (d.page === "deck") out.push(t.board.deck);
   if (d.mfa === true) out.push(t.audit.mfa);
   if (d.oneTime === true) out.push(t.audit.oneTime);
   if (d.reason === "otpExpired") out.push(t.audit.otpExpired);
-  for (const k of ["submissions", "incomplete", "expired", "reports", "auditEntries"]) {
+  for (const k of ["submissions", "incomplete", "expired", "reports", "auditEntries", "pendingStreamers"]) {
     if (typeof d[k] === "number" && (d[k] as number) > 0) out.push(t.audit.count(t.audit.counts[k], d[k] as number));
   }
   return out;

@@ -13,9 +13,11 @@ type Props = {
   caption?: string;
   /** Difumina la foto (privacidad en directo) */
   blurred?: boolean;
+  /** Vídeo: se reproduce con los controles del navegador (sin zoom) */
+  kind?: "image" | "video";
 };
 
-export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurred = false }: Props) {
+export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurred = false, kind = "image" }: Props) {
   const t = useT();
   const closeRef = useRef<HTMLButtonElement>(null);
   const zoom = useRef<ZoomHandle>(null);
@@ -51,15 +53,21 @@ export default function Lightbox({ url, onClose, onPrev, onNext, caption, blurre
   if (!url) return null;
   return (
     <div role="dialog" aria-modal="true" aria-label={caption ?? t.lightbox.photo} className={`enter-fade fixed inset-0 z-50 bg-black/95 ${blurred ? "privacy-blur" : ""}`}>
-      <ZoomableImage
-        ref={zoom}
-        src={url}
-        alt={caption ?? ""}
-        className="enter-zoom absolute inset-0"
-        imgClassName="max-h-[92vh] max-w-[92vw] rounded-xl object-contain"
-        controlsClassName="bottom-4 left-1/2 -translate-x-1/2"
-        onBackgroundClick={onClose}
-      />
+      {kind === "video" ? (
+        <div className="enter-zoom absolute inset-0 flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+          <video key={url} src={url} controls autoPlay playsInline muted aria-label={caption ?? ""} className="max-h-[86vh] max-w-[92vw] rounded-xl bg-black" />
+        </div>
+      ) : (
+        <ZoomableImage
+          ref={zoom}
+          src={url}
+          alt={caption ?? ""}
+          className="enter-zoom absolute inset-0"
+          imgClassName="max-h-[92vh] max-w-[92vw] rounded-xl object-contain"
+          controlsClassName="bottom-4 left-1/2 -translate-x-1/2"
+          onBackgroundClick={onClose}
+        />
+      )}
 
       <button ref={closeRef} onClick={onClose} aria-label={t.common.close}
         className="pressable absolute top-4 right-4 z-10 flex size-10 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white backdrop-blur-md hover:bg-white/10">

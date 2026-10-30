@@ -5,10 +5,10 @@ import { Globe, ShieldCheck, Tv } from "lucide-react";
 import Segmented from "./Segmented";
 import { useT } from "@/i18n/client";
 
-export default function BoardNav({ slug, queue, deck }: { slug: string; queue: boolean; deck: boolean }) {
+/** Pestañas de un board para el equipo. base: /{streamer}/{board} */
+export default function BoardNav({ base, queue, deck }: { base: string; queue: boolean; deck: boolean }) {
   const t = useT();
   const path = usePathname();
-  const base = `/${slug}`;
   const items = [
     { key: base, label: t.board.publicPage, icon: Globe, href: base },
     ...(queue ? [{ key: `${base}/queue`, label: t.board.queue, icon: ShieldCheck, href: `${base}/queue` }] : []),

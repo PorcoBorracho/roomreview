@@ -28,15 +28,32 @@ export async function verifyTurnstile(token: string, ip: string, action: Turnsti
       signal: AbortSignal.timeout(8000),
     });
     const data = (await res.json()) as SiteVerify;
-    if (data.success !== true) return false;
-    if (TEST_SECRET.test(secret)) return true;
-
-    const host = ((await headers()).get("host") ?? "").split(":")[0].toLowerCase();
-    if (!data.hostname || data.hostname.toLowerCase() !== host) {
-      console.warn("turnstile hostname mismatch", data.hostname, host);
+    if (data.success !== true) {
+      // El motivo solo va a los logs del servidor (Vercel → Logs), nunca al visitante
+      const codes = data["error-codes"] ?? [];
+      const hint = token.includes("DUMMY")
+        ? "the site key is a TEST key but TURNSTILE_SECRET_KEY is a real one: use both test keys or both real keys from the same widget"
+        : codes.includes("invalid-input-secret")
+          ? "TURNSTILE_SECRET_KEY is wrong or belongs to another widget"
+          : codes.includes("timeout-or-duplicate")
+            ? "token expired or already used"
+            : "";
+      console.warn(`turnstile rejected (${action}): ${codes.join(", ") || "no error code"}${hint ? ` -> ${hint}` : ""}`);
       return false;
     }
-    if (data.action !== action) return false;
+    if (TEST_SECRET.test(secret)) return true;
+
+    // Detrás de un proxy propio (Docker, Cloudflare Tunnel…) "host" puede ser interno: se prefiere x-forwarded-host
+    const h = await headers();
+    const host = (h.get("x-forwarded-host")?.split(",")[0] ?? h.get("host") ?? "").trim().split(":")[0].toLowerCase();
+    if (!data.hostname || data.hostname.toLowerCase() !== host) {
+      console.warn(`turnstile hostname mismatch (${action}): token for "${data.hostname}", request for "${host}"`);
+      return false;
+    }
+    if (data.action !== action) {
+      console.warn(`turnstile action mismatch: token for "${data.action}", expected "${action}"`);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error("turnstile error", e);

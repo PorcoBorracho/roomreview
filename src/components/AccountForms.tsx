@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Copy, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
-import { changePassword, disableTotp, enableTotp, startTotpSetup, type AuthState } from "@/actions/auth";
+import { CheckCircle2, Copy, KeyRound, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
+import { changePassword, disableTotp, enableTotp, resetOwnerPassword, startTotpSetup, type AuthState } from "@/actions/auth";
 import { useT } from "@/i18n/client";
 import FormError from "./FormError";
 import { SubmitButton } from "./LoginForm";
@@ -51,7 +51,13 @@ export function ChangePasswordForm({ forced }: { forced: boolean }) {
   );
 }
 
-export function TwoFactorPanel({ enabledSince, siteAdmin }: { enabledSince: string | null; siteAdmin: boolean }) {
+/**
+ * recommended: Site Admins · required: el Owner (no puede desactivarla)
+ * doneHref: adonde ir al activarla (paso obligatorio del Owner)
+ */
+export function TwoFactorPanel({ enabledSince, recommended = false, required = false, doneHref }: {
+  enabledSince: string | null; recommended?: boolean; required?: boolean; doneHref?: string;
+}) {
   const t = useT();
   const router = useRouter();
   const [setup, setSetup] = useState<{ secret: string; qr: string } | null>(null);
@@ -65,9 +71,10 @@ export function TwoFactorPanel({ enabledSince, siteAdmin }: { enabledSince: stri
     if (enableState.ok) {
       setSetup(null);
       setNotice(t.twoFactor.enabled);
-      router.refresh();
+      if (doneHref) router.replace(doneHref);
+      else router.refresh();
     }
-  }, [enableState, router, t]);
+  }, [enableState, router, t, doneHref]);
   useEffect(() => {
     if (disableState.ok) {
       setNotice(t.twoFactor.disabled);
@@ -95,7 +102,8 @@ export function TwoFactorPanel({ enabledSince, siteAdmin }: { enabledSince: stri
         <Pill tone={on ? "success" : "muted"}>{on ? t.twoFactor.on : t.twoFactor.off}</Pill>
       </div>
       <p className="mt-2 text-sm leading-relaxed text-pretty text-muted">{on ? t.twoFactor.onText(enabledSince) : t.twoFactor.offText}</p>
-      {!on && siteAdmin && <p className="mt-2 text-sm font-medium text-warning-text">{t.twoFactor.recommended}</p>}
+      {!on && required && <p className="mt-2 text-sm font-medium text-warning-text">{t.twoFactor.required}</p>}
+      {!on && !required && recommended && <p className="mt-2 text-sm font-medium text-warning-text">{t.twoFactor.recommended}</p>}
       {notice && <div className="mt-4"><Success>{notice}</Success></div>}
 
       {!on && !setup && (
@@ -142,7 +150,9 @@ export function TwoFactorPanel({ enabledSince, siteAdmin }: { enabledSince: stri
         </form>
       )}
 
-      {on && (
+      {on && required && <p className="mt-4 border-t border-line pt-4 text-xs leading-relaxed text-subtle">{t.twoFactor.requiredOwner}</p>}
+
+      {on && !required && (
         <form onSubmit={disableAction} className="mt-5 space-y-4 border-t border-line pt-5">
           <h3 className="text-sm font-semibold text-strong">{t.twoFactor.disableTitle}</h3>
           <p className="-mt-2 text-sm text-muted">{t.twoFactor.disableHint}</p>
@@ -166,5 +176,31 @@ export function TwoFactorPanel({ enabledSince, siteAdmin }: { enabledSince: stri
         </form>
       )}
     </div>
+  );
+}
+
+/** Owner: volver a la contraseña de configuración (la de ADMIN_PASSWORD_HASH). Cierra la sesión. */
+export function OwnerResetPanel() {
+  const t = useT();
+  const [state, action, pending] = useFormAction<AuthState>(resetOwnerPassword, {});
+  return (
+    <form onSubmit={action} className="space-y-4">
+      <div className="flex items-center gap-2">
+        <KeyRound className="size-4 text-accent-text" />
+        <h2 className="text-base font-semibold text-strong">{t.account.ownerResetTitle}</h2>
+      </div>
+      <p className="-mt-2 text-sm leading-relaxed text-pretty text-muted">{t.account.ownerResetText}</p>
+      <div>
+        <label htmlFor="owner-reset-code" className="mb-2 block text-sm font-medium text-ink">{t.login.totpCode}</label>
+        <input id="owner-reset-code" name="code" required inputMode="numeric" autoComplete="one-time-code" maxLength={7}
+          className="field font-mono tracking-[0.25em] tabular-nums" />
+      </div>
+      <FormError code={state.error} />
+      <button type="submit" disabled={pending}
+        className="pressable flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-danger-text hover:bg-danger/10 disabled:opacity-60">
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />} {t.account.ownerResetButton}
+      </button>
+      <p className="text-xs leading-relaxed text-subtle">{t.account.ownerResetScript}</p>
+    </form>
   );
 }

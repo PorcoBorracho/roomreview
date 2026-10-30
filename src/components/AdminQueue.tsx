@@ -6,6 +6,7 @@ import { Search, Inbox, Mail, Check, Trash2, Undo2, ChevronLeft, ChevronRight, L
 import { approveSubmission, deleteSubmission, unapproveSubmission } from "@/actions/admin";
 import type { AdminSubmission } from "@/lib/types";
 import Lightbox from "./Lightbox";
+import Thumb from "./MediaThumb";
 import HoldButton from "./HoldButton";
 import Segmented from "./Segmented";
 import FormError from "./FormError";
@@ -204,9 +205,8 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
                       <li key={m.id}>
                         <button type="button" onClick={() => setViewer({ subId: sub.id, index: i })}
                           aria-label={t.queue.openPhoto(i + 1, sub.media.length)}
-                          className="pressable block aspect-[4/3] w-full overflow-hidden rounded-xl border border-line bg-black hover:border-accent/70">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={m.url} alt="" loading="lazy" className="size-full object-cover" />
+                          className="pressable relative block aspect-[4/3] w-full overflow-hidden rounded-xl border border-line bg-black hover:border-accent/70">
+                          <Thumb item={m} />
                         </button>
                       </li>
                     ))}
@@ -234,6 +234,7 @@ export default function AdminQueue({ submissions, filtered, total, status, q, pa
 
       <Lightbox
         url={open && viewer ? open.media[viewer.index]?.url ?? null : null}
+        kind={open && viewer ? open.media[viewer.index]?.kind : "image"}
         caption={open && viewer ? `@${open.username} · ${viewer.index + 1} / ${openCount}` : undefined}
         onClose={() => setViewer(null)}
         onPrev={openCount > 1 ? () => setViewer((v) => v && { ...v, index: (v.index - 1 + openCount) % openCount }) : undefined}

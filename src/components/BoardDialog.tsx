@@ -7,39 +7,42 @@ import {
 } from "@/actions/boards";
 import { generatePassword } from "@/lib/password-gen";
 import { slugify, slugProblem } from "@/lib/slug";
-import { PLATFORM_KEYS, type Platform } from "@/lib/platforms";
-import type { Board } from "@/lib/types";
+import type { Board, StreamerRef } from "@/lib/types";
 import { useT } from "@/i18n/client";
 import { errorText } from "@/i18n/dict";
 import CopyButton from "./CopyButton";
 import HoldButton from "./HoldButton";
 import Switch from "./Switch";
 import FormError from "./FormError";
+import StreamerAvatar from "./StreamerAvatar";
 
 type Kind = "streamer" | "moderator";
 
 type Props = {
   /** null = crear; un board = editar */
   board: (Board & { pending?: number; approved?: number }) | null;
-  /** Dueño o Site Admin: puede borrar y compartir */
-  canOwn: boolean;
+  /** Quien lo creó, su streamer o un Site Admin */
+  canDelete: boolean;
+  /** Quien lo creó o un Site Admin */
+  canShare: boolean;
+  /** Streamers para los que esta cuenta puede crear boards (o a los que puede pasar uno) */
+  streamers: StreamerRef[];
+  viewerRole: string;
   open: boolean;
   onClose: () => void;
   onSaved: (slug: string) => void;
   onDeleted?: () => void;
   /** Cambios que no cierran el diálogo (compartir, regenerar): refrescan los datos de fondo */
   onChanged?: () => void;
-  /** Streamers ya usados, para autocompletar */
-  knownStreamers?: string[];
 };
 
 const smallBtn = "flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[13px] font-semibold text-ink hover:border-line-strong";
 
-export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onDeleted, onChanged, knownStreamers = [] }: Props) {
+export default function BoardDialog({ board, canDelete, canShare, streamers, viewerRole, open, onClose, onSaved, onDeleted, onChanged }: Props) {
   const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
-  const [streamerName, setStreamerName] = useState("");
-  const [platform, setPlatform] = useState<Platform>("twitch");
+  const isStreamer = viewerRole === "streamer";
+  const [streamerId, setStreamerId] = useState("");
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
@@ -47,6 +50,8 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
   const [isActive, setIsActive] = useState(true);
   const [submissionsOpen, setSubmissionsOpen] = useState(true);
   const [peopleAllowed, setPeopleAllowed] = useState(false);
+  const [blurNew, setBlurNew] = useState(true);
+  const [allowVideos, setAllowVideos] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -60,8 +65,7 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
     const d = ref.current;
     if (!d) return;
     if (open) {
-      setStreamerName(board?.streamerName ?? "");
-      setPlatform(board?.platform ?? "twitch");
+      setStreamerId(board?.streamer?.id ?? (streamers.length === 1 ? streamers[0].id : ""));
       setTitle(board?.title ?? "");
       setSlug(board?.slug ?? "");
       setSlugTouched(!!board);
@@ -69,6 +73,8 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
       setIsActive(board?.isActive ?? true);
       setSubmissionsOpen(board?.submissionsOpen ?? true);
       setPeopleAllowed(board?.peopleAllowed ?? false);
+      setBlurNew(board?.blurNew ?? true);
+      setAllowVideos(board?.allowVideos ?? false);
       setMembers(board?.members ?? []);
       setError(null);
       setPasswords(board ? { streamer: "", moderator: "" } : { streamer: generatePassword(), moderator: generatePassword() });
@@ -78,6 +84,9 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, board?.id]);
 
+  // El streamer actual del board aunque esta cuenta no pueda elegirlo (p. ej. un board compartido)
+  const options = board?.streamer && !streamers.some((x) => x.id === board.streamer!.id) ? [board.streamer, ...streamers] : streamers;
+  const selected = options.find((x) => x.id === streamerId) ?? null;
   const slugIssue = slug ? slugProblem(slug) : null;
   const slugError = slugIssue ? errorText(t, slugIssue === "reserved" ? "slugReserved" : "slugInvalid") : null;
   const slugChanged = !!board && slug !== board.slug;
@@ -89,7 +98,7 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
     setError(null);
     if (slugIssue) return setError(slugIssue === "reserved" ? "slugReserved" : "slugInvalid");
     setSaving(true);
-    const input = { streamerName, platform, title, slug, description, isActive, submissionsOpen, peopleAllowed };
+    const input = { streamerId, title, slug, description, isActive, submissionsOpen, peopleAllowed, blurNew, allowVideos };
     const res = board
       ? await updateBoard(board.id, input, board.updatedAt)
       : await createBoard({ ...input, streamerPassword: passwords.streamer, moderatorPassword: passwords.moderator });
@@ -124,38 +133,34 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
           </header>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            <div className="grid gap-4 sm:grid-cols-[1fr_11rem]">
+            {!isStreamer && (
               <div>
                 <label htmlFor="b-streamer" className="mb-2 block text-sm font-medium text-ink">{t.boardDialog.streamer}</label>
-                <input id="b-streamer" required maxLength={40} value={streamerName} autoFocus placeholder={t.boardDialog.streamerPlaceholder}
-                  list="known-streamers" autoComplete="off" spellCheck={false}
-                  onChange={(e) => { setStreamerName(e.target.value); if (!slugTouched) setSlug(slugify(`${e.target.value} ${title}`)); }}
-                  className="field" />
-                <datalist id="known-streamers">
-                  {knownStreamers.map((n) => <option key={n} value={n} />)}
-                </datalist>
+                <div className="flex items-center gap-2.5">
+                  {selected && <StreamerAvatar streamer={selected} />}
+                  <select id="b-streamer" required value={streamerId} onChange={(e) => setStreamerId(e.target.value)} className="field" autoFocus>
+                    {!streamerId && <option value="">{t.boardDialog.chooseStreamer}</option>}
+                    {options.map((x) => <option key={x.id} value={x.id}>{x.displayName} (@{x.login})</option>)}
+                  </select>
+                </div>
+                <p className="mt-1.5 text-xs text-subtle">{t.boardDialog.streamerHint}</p>
               </div>
-              <div>
-                <label htmlFor="b-platform" className="mb-2 block text-sm font-medium text-ink">{t.boardDialog.streamsOn}</label>
-                <select id="b-platform" value={platform} onChange={(e) => setPlatform(e.target.value as Platform)} className="field">
-                  {PLATFORM_KEYS.map((k) => <option key={k} value={k}>{t.platforms[k]}</option>)}
-                </select>
-              </div>
-            </div>
-            <p className="-mt-3 text-xs text-subtle">{t.boardDialog.streamerHint}</p>
+            )}
 
             <div>
               <label htmlFor="b-title" className="mb-2 block text-sm font-medium text-ink">{t.boardDialog.title}</label>
-              <input id="b-title" required maxLength={80} value={title} placeholder={t.boardDialog.titlePlaceholder}
-                onChange={(e) => { setTitle(e.target.value); if (!slugTouched) setSlug(slugify(`${streamerName} ${e.target.value}`)); }}
+              <input id="b-title" required maxLength={80} value={title} placeholder={t.boardDialog.titlePlaceholder} autoFocus={isStreamer}
+                onChange={(e) => { setTitle(e.target.value); if (!slugTouched) setSlug(slugify(e.target.value)); }}
                 className="field" />
             </div>
 
             <div>
               <label htmlFor="b-slug" className="mb-2 block text-sm font-medium text-ink">{t.boardDialog.address}</label>
               <div className={`flex items-center overflow-hidden rounded-xl border bg-well focus-within:border-accent ${slugError ? "border-danger" : "border-line"}`}>
-                <span className="max-w-[45%] shrink-0 truncate border-r border-line px-3 py-2.5 text-sm text-subtle">{origin.replace(/^https?:\/\//, "")}/</span>
-                <input id="b-slug" required maxLength={48} value={slug} spellCheck={false} autoCapitalize="off" placeholder="streamer-pet-review"
+                <span className="max-w-[55%] shrink-0 truncate border-r border-line px-3 py-2.5 text-sm text-subtle" dir="rtl">
+                  <bdi>{origin.replace(/^https?:\/\//, "")}/{selected?.login ?? "…"}/</bdi>
+                </span>
+                <input id="b-slug" required maxLength={48} value={slug} spellCheck={false} autoCapitalize="off" placeholder="pet-review"
                   onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")); }}
                   aria-invalid={slugError ? true : undefined} aria-describedby="b-slug-help"
                   className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base text-ink outline-none sm:text-sm" />
@@ -180,6 +185,8 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
               <Toggle id="b-active" label={t.boardDialog.activeLabel} checked={isActive} onChange={setIsActive} hint={t.boardDialog.activeHint} />
               <Toggle id="b-open" label={t.boardDialog.acceptingLabel} checked={submissionsOpen} onChange={setSubmissionsOpen} hint={t.boardDialog.acceptingHint} />
               <Toggle id="b-people" label={t.boardDialog.peopleLabel} checked={peopleAllowed} onChange={setPeopleAllowed} hint={t.boardDialog.peopleHint} />
+              <Toggle id="b-blur" label={t.boardDialog.blurLabel} checked={blurNew} onChange={setBlurNew} hint={t.boardDialog.blurHint} />
+              <Toggle id="b-videos" label={t.boardDialog.videosLabel} checked={allowVideos} onChange={setAllowVideos} hint={t.boardDialog.videosHint} />
             </div>
 
             {peopleAllowed && (
@@ -222,14 +229,14 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
               )}
             </fieldset>
 
-            {board && (
-              <Sharing board={board} canOwn={canOwn} members={members} setMembers={setMembers} onError={setError} onChanged={onChanged} />
+            {board && !isStreamer && (
+              <Sharing board={board} canOwn={canShare} members={members} setMembers={setMembers} onError={setError} onChanged={onChanged} />
             )}
 
             {board && (
               <div className="rounded-xl border border-danger/30 p-4">
                 <p className="text-sm font-medium text-ink">{t.boardDialog.deleteTitle}</p>
-                {canOwn ? (
+                {canDelete ? (
                   <>
                     <p className="mt-0.5 text-xs leading-relaxed text-subtle">{t.boardDialog.deleteText(total)}</p>
                     <HoldButton holdMs={1500} disabled={deleting || saving} onConfirm={remove}
@@ -256,7 +263,7 @@ export default function BoardDialog({ board, canOwn, open, onClose, onSaved, onD
                 {t.common.cancel}
               </button>
               <button type="submit"
-                disabled={saving || deleting || !!slugError || pwShort("streamer") || pwShort("moderator") || pwSame || !title.trim() || !streamerName.trim()}
+                disabled={saving || deleting || !!slugError || pwShort("streamer") || pwShort("moderator") || pwSame || !title.trim() || (!isStreamer && !streamerId)}
                 className="pressable flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-6 text-sm font-semibold text-on-accent shadow-raised hover:bg-accent-hover disabled:bg-accent/45">
                 {saving && <Loader2 className="size-4 animate-spin" />} {board ? t.boardDialog.saveChanges : t.boardDialog.create}
               </button>
