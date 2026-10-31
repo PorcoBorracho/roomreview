@@ -2,6 +2,8 @@
 
 [English](README.md) · **Español**
 
+Proyecto hecho usando Claude.
+
 📘 Guía de uso (en inglés): [docs/Stream-Reviews-User-Guide.pdf](docs/Stream-Reviews-User-Guide.pdf)
 
 Web para recibir fotos (y vídeos cortos) de la comunidad y revisarlos en directo. Varios **streamers** usan la misma web: entran con **Twitch**, tienen su **página pública** con sus **boards** (Room Review, Costume Review, Pet Review…) y su propio equipo de moderación. Los visitantes buscan a su streamer desde la página de inicio. Todo funciona con planes gratuitos: Vercel Hobby, Supabase Free, Cloudflare Turnstile y una aplicación de Twitch.
