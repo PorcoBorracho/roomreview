@@ -2,6 +2,8 @@
 
 **English** · [Español](README.es.md)
 
+Proyect made using Claude.
+
 A self-hosted web app for collecting photos (and short videos) from a community and reviewing them live on stream: room reviews, costume reviews, pet reviews and anything else. One installation hosts any number of **streamers**, who sign in with Twitch, each with their own public page, their own **boards** and their own moderation team.
 
 It runs entirely on free plans: **Vercel Hobby**, **Supabase Free**, **Cloudflare Turnstile** and a **Twitch** developer application.
